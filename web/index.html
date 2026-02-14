@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#3B82F6" />
+    <meta name="description" content="智能座舱自然语言控制系统" />
+    <title>智能座舱控制系统</title>
+    <!-- 预加载暗色模式设置 -->
+    <script>
+      if (localStorage.getItem('darkMode') === 'true') {
+        document.documentElement.classList.add('dark')
+      }
+    </script>
+  </head>
+  <body class="antialiased">
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

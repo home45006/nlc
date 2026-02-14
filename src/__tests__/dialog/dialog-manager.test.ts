@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { DialogManager } from '../../dialog/dialog-manager.js'
-import type { LLMProvider, ChatResponse, ToolCall, ChatMessage } from '../../types/index.js'
-import { Domain } from '../../types/index.js'
+import type { LLMProvider, ChatResponse, ToolCall } from '../../types/index.js'
 
 // 创建 Mock LLM Provider
 function createMockProvider(response: Partial<ChatResponse> = {}): LLMProvider {

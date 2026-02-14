@@ -35,10 +35,15 @@
 | 语言 | TypeScript |
 | 运行时 | Node.js (ESM) |
 | LLM | Google Gemini / 智谱 GLM |
+| 后端 | Fastify (HTTP + WebSocket) |
+| 前端 | Vue 3 + Vite + Tailwind CSS |
+| 状态管理 | Pinia |
 | 测试 | Vitest (99.47% 覆盖率) |
 | 架构 | Function Calling |
 
 ## 快速开始
+
+### CLI 模式
 
 ### 1. 克隆项目
 
@@ -74,9 +79,38 @@ DEFAULT_MODEL=gemini
 
 ### 4. 启动程序
 
+#### CLI 模式
+
 ```bash
 npm start
 ```
+
+#### Web 模式
+
+```bash
+# 安装前端依赖
+cd web && npm install && cd ..
+
+# 启动后端服务
+npm run web
+
+# 在另一个终端启动前端开发服务器
+cd web && npm run dev
+```
+
+访问 http://localhost:5173 使用 Web 界面。
+
+**生产环境部署:**
+
+```bash
+# 构建前端
+cd web && npm run build && cd ..
+
+# 启动服务 (自动服务静态文件)
+npm run web
+```
+
+访问 http://localhost:3000
 
 ## 使用示例
 
@@ -157,6 +191,11 @@ nlc/
 │   ├── cli/                    # 命令行界面
 │   │   ├── repl.ts             # REPL 交互
 │   │   └── renderer.ts         # 输出渲染
+│   ├── web/                    # Web 服务 (新增)
+│   │   ├── server.ts           # HTTP + WebSocket 服务器
+│   │   └── routes/
+│   │       ├── api.ts          # REST API 路由
+│   │       └── ws.ts           # WebSocket 处理
 │   ├── dialog/                 # 对话管理
 │   │   └── dialog-manager.ts   # 对话管理器
 │   ├── executor/               # 指令执行
@@ -175,6 +214,19 @@ nlc/
 │   ├── config.ts               # 配置
 │   ├── constants.ts            # 常量
 │   └── main.ts                 # 入口
+├── web/                        # 前端项目 (新增)
+│   ├── src/
+│   │   ├── components/         # Vue 组件
+│   │   │   ├── layout/         # 布局组件
+│   │   │   ├── chat/           # 对话组件
+│   │   │   └── vehicle/        # 车辆状态组件
+│   │   ├── stores/             # Pinia 状态管理
+│   │   ├── hooks/              # Vue Hooks
+│   │   ├── services/           # API 服务
+│   │   └── types/              # 类型定义
+│   ├── index.html
+│   ├── vite.config.ts
+│   └── tailwind.config.js
 ├── prompts/
 │   └── system.md               # 系统提示词
 ├── test/
