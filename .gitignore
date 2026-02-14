@@ -3,3 +3,10 @@ dist/
 .env
 *.log
 .DS_Store
+
+# IDE and tools
+.claude/
+
+# Generated reports
+.reports/
+coverage/
