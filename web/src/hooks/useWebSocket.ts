@@ -78,11 +78,7 @@ export function useWebSocket() {
       case 'dialog': {
         const payload = message.payload as WSDialogPayload
         chatStore.removeProcessingMessage()
-        chatStore.addAssistantMessage({
-          ttsText: payload.ttsText,
-          stateChanges: payload.stateChanges,
-          meta: payload.meta,
-        })
+        chatStore.addAssistantMessage(payload)
         break
       }
 
@@ -101,6 +97,11 @@ export function useWebSocket() {
         const payload = message.payload as { message: string }
         chatStore.removeProcessingMessage()
         chatStore.addErrorMessage(payload.message)
+        break
+      }
+
+      case 'context_cleared': {
+        chatStore.clearMessages()
         break
       }
 
@@ -135,6 +136,26 @@ export function useWebSocket() {
     } catch (error) {
       console.error('Failed to send message:', error)
       chatStore.addErrorMessage('发送失败')
+      return false
+    }
+  }
+
+  function clearContext() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      chatStore.addErrorMessage('连接已断开，无法清空上下文')
+      return false
+    }
+
+    const message: WSMessage = {
+      type: 'clear_context',
+    }
+
+    try {
+      ws.send(JSON.stringify(message))
+      return true
+    } catch (error) {
+      console.error('Failed to clear context:', error)
+      chatStore.addErrorMessage('清空上下文失败')
       return false
     }
   }
@@ -176,6 +197,7 @@ export function useWebSocket() {
     isConnected,
     connectionError,
     sendMessage,
+    clearContext,
     reconnect: connect,
     disconnect,
   }

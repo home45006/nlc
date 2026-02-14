@@ -4,7 +4,7 @@ import type { AppContext } from '../server.js'
 import type { RawData } from 'ws'
 
 interface WebSocketMessage {
-  type: 'dialog' | 'ping'
+  type: 'dialog' | 'ping' | 'clear_context'
   payload?: unknown
 }
 
@@ -27,6 +27,9 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance, ctx: App
           switch (message.type) {
             case 'dialog':
               await handleDialogMessage(connection, message.payload as DialogPayload, ctx, fastify)
+              break
+            case 'clear_context':
+              handleClearContext(connection, ctx)
               break
             case 'ping':
               connection.send(JSON.stringify({ type: 'pong' }))
@@ -70,6 +73,19 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance, ctx: App
     }))
   }
 
+  function handleClearContext(connection: WebSocket, ctx: AppContext) {
+    // 清空对话历史
+    ctx.dialogManager.clearHistory()
+
+    // 发送清空确认
+    connection.send(JSON.stringify({
+      type: 'context_cleared',
+      payload: {
+        message: '对话上下文已清空',
+      },
+    }))
+  }
+
   async function handleDialogMessage(
     connection: WebSocket,
     payload: DialogPayload,
@@ -95,13 +111,19 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance, ctx: App
     try {
       const result = await ctx.dialogManager.handleInput(message)
 
-      // 发送对话响应
+      // 发送对话响应（包含完整的结构化数据）
       connection.send(JSON.stringify({
         type: 'dialog',
         payload: {
           ttsText: result.output.ttsText,
           stateChanges: result.stateChanges,
           meta: result.output.meta,
+          // 结构化识别结果
+          domain: result.output.domain,
+          intent: result.output.intent,
+          slots: result.output.slots,
+          confidence: result.output.confidence,
+          hasCommand: result.output.hasCommand,
         },
       }))
 

@@ -95,6 +95,8 @@ export type WSMessageType =
   | 'error'
   | 'ping'
   | 'pong'
+  | 'clear_context'
+  | 'context_cleared'
 
 export interface WSMessage {
   type: WSMessageType
@@ -118,6 +120,12 @@ export interface WSDialogPayload {
       completion: number
     }
   }
+  // 结构化识别结果
+  domain?: string
+  intent?: string
+  slots?: Record<string, unknown>
+  confidence?: number
+  hasCommand?: boolean
 }
 
 export interface WSStatePayload {

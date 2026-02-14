@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, StateChange, DialogOutput } from '../types'
+import type { ChatMessage, StateChange, WSDialogPayload } from '../types'
 
 export interface DisplayMessage {
   id: string
@@ -9,6 +9,17 @@ export interface DisplayMessage {
   stateChanges?: StateChange[]
   timestamp: number
   isProcessing?: boolean
+  // 结构化识别结果
+  domain?: string
+  intent?: string
+  slots?: Record<string, unknown>
+  confidence?: number
+  hasCommand?: boolean
+  meta?: {
+    model: string
+    latencyMs: number
+    tokens: { prompt: number; completion: number }
+  }
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -34,13 +45,20 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // 添加助手消息
-  function addAssistantMessage(output: DialogOutput) {
+  function addAssistantMessage(output: WSDialogPayload) {
     const message: DisplayMessage = {
       id: generateId(),
       role: 'assistant',
       content: output.ttsText,
       stateChanges: output.stateChanges,
       timestamp: Date.now(),
+      // 结构化识别结果
+      domain: output.domain,
+      intent: output.intent,
+      slots: output.slots,
+      confidence: output.confidence,
+      hasCommand: output.hasCommand,
+      meta: output.meta,
     }
     messages.value.push(message)
   }
