@@ -111,19 +111,16 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance, ctx: App
     try {
       const result = await ctx.dialogManager.handleInput(message)
 
-      // 发送对话响应（包含完整的结构化数据）
+      // 发送对话响应（包含改写结果）
       connection.send(JSON.stringify({
         type: 'dialog',
         payload: {
           ttsText: result.output.ttsText,
           stateChanges: result.stateChanges,
           meta: result.output.meta,
-          // 结构化识别结果
-          domain: result.output.domain,
-          intent: result.output.intent,
-          slots: result.output.slots,
-          confidence: result.output.confidence,
-          hasCommand: result.output.hasCommand,
+          // 改写结果
+          originalInput: result.originalInput,
+          routings: result.routings,
         },
       }))
 

@@ -1,8 +1,9 @@
 import { createInterface } from 'node:readline'
 import type { LLMProvider } from '../types/index.js'
-import { DialogManager } from '../dialog/dialog-manager.js'
+import { NewDialogManager as DialogManager } from '../dialog/new-dialog-manager.js'
 import { ZhipuProvider } from '../llm/providers/zhipu.js'
 import { GeminiProvider } from '../llm/providers/gemini.js'
+import { IntentRewriter } from '../llm/intent-rewriter.js'
 import { config } from '../config.js'
 import {
   renderBanner,
@@ -103,7 +104,7 @@ export async function startRepl(): Promise<void> {
         }
 
         const result = await dialogManager.handleInput(trimmed)
-        renderResult(result.output, result.stateChanges)
+        renderResult(result.output, result.stateChanges, result.routings, result.originalInput)
       } catch (error) {
         renderError(error)
       }
@@ -123,7 +124,7 @@ export async function startRepl(): Promise<void> {
         break
 
       case '/state':
-        renderVehicleState(dialogManager.stateManager.getState())
+        renderVehicleState(dialogManager.getStateManager().getState())
         break
 
       case '/model': {
@@ -162,6 +163,10 @@ export async function startRepl(): Promise<void> {
         console.log(`\n  调试模式: ${debugMode ? '开启' : '关闭'}\n`)
         break
 
+      case '/rewrite':
+        handleRewrite(parts.slice(1).join(' '))
+        break
+
       case '/quit':
       case '/exit':
         console.log('\n  再见!\n')
@@ -170,6 +175,34 @@ export async function startRepl(): Promise<void> {
 
       default:
         console.log(`\n  未知命令: ${cmd}，输入 /help 查看帮助\n`)
+    }
+  }
+
+  async function handleRewrite(input: string): Promise<void> {
+    if (!input) {
+      console.log('\n  用法: /rewrite <用户输入>')
+      console.log('  示例: /rewrite 打开空调并播放音乐\n')
+      return
+    }
+
+    try {
+      const rewriter = new IntentRewriter(provider)
+
+      const result = await rewriter.rewrite(input)
+
+      console.log(`\n输入: "${result.original}"`)
+      console.log('改写结果:')
+
+      if (result.rewrittenQueries.length === 0) {
+        console.log('  (无拆分结果)')
+      } else {
+        result.rewrittenQueries.forEach((q, i) => {
+          console.log(`  ${i + 1}. [${q.domain}] "${q.query}"`)
+        })
+      }
+      console.log('')
+    } catch (error) {
+      renderError(error)
     }
   }
 

@@ -109,6 +109,14 @@ export interface WSInitPayload {
   model: string
 }
 
+// 改写结果
+export interface RewrittenQuery {
+  domain: string
+  rewrittenQuery: string
+  originalQuery?: string
+  confidence?: number
+}
+
 export interface WSDialogPayload {
   ttsText: string
   stateChanges: StateChange[]
@@ -120,12 +128,9 @@ export interface WSDialogPayload {
       completion: number
     }
   }
-  // 结构化识别结果
-  domain?: string
-  intent?: string
-  slots?: Record<string, unknown>
-  confidence?: number
-  hasCommand?: boolean
+  // 改写结果
+  originalInput?: string
+  routings?: RewrittenQuery[]
 }
 
 export interface WSStatePayload {

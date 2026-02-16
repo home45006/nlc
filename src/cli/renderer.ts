@@ -1,4 +1,5 @@
 import type { DialogOutput, StateChange, VehicleState } from '../types/index.js'
+import type { DomainRouting } from '../core/types.js'
 import { MODE_MAP } from '../constants.js'
 
 const DIVIDER = '───────── 识别结果 ─────────'
@@ -13,7 +14,30 @@ export function renderBanner(model: string): void {
   console.log('')
 }
 
-export function renderResult(output: DialogOutput, stateChanges: ReadonlyArray<StateChange>): void {
+export function renderResult(
+  output: DialogOutput,
+  stateChanges: ReadonlyArray<StateChange>,
+  routings?: ReadonlyArray<DomainRouting>,
+  originalInput?: string,
+): void {
+  // 如果有多意图改写结果，优先显示
+  if (routings && routings.length > 1 && originalInput) {
+    console.log('')
+    console.log(`输入: "${originalInput}"`)
+    console.log('改写结果:')
+    routings.forEach((r, i) => {
+      console.log(`  ${i + 1}. [${r.domain}] "${r.rewrittenQuery}"`)
+    })
+    console.log('')
+    // 也输出 TTS 回复
+    if (output.ttsText) {
+      console.log(`小智> ${output.ttsText}`)
+    }
+    console.log('')
+    return
+  }
+
+  // 单意图时显示原有格式
   console.log('')
   console.log(DIVIDER)
   console.log(`  Domain: ${output.domain}`)
@@ -77,6 +101,7 @@ export function renderHelp(): void {
   console.log('    /history  查看对话历史')
   console.log('    /clear    清除对话历史')
   console.log('    /reset    重置车辆状态')
+  console.log('    /rewrite  意图改写 (如: /rewrite 开空调并播放音乐)')
   console.log('    /debug    开关调试模式')
   console.log('    /quit     退出')
   console.log('────────────────────────')

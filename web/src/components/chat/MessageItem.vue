@@ -1,23 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import type { DisplayMessage } from '../../stores/chatStore'
 
 defineProps<{
   message: DisplayMessage
 }>()
 
-const showDetails = ref(false)
-
 // Domain 中文映射
 const domainLabels: Record<string, string> = {
   vehicle_control: '车辆控制',
   music: '音乐',
   navigation: '导航',
-  general: '通用对话',
-}
-
-function formatSlots(slots: Record<string, unknown>): string {
-  return JSON.stringify(slots, null, 2)
+  chat: '通用对话',
 }
 </script>
 
@@ -60,52 +53,25 @@ function formatSlots(slots: Record<string, unknown>): string {
           {{ message.content }}
         </div>
 
-        <!-- 结构化识别结果 -->
+        <!-- 改写结果 -->
         <div
-          v-if="!message.isProcessing && (message.domain || message.intent)"
-          class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2 text-xs"
+          v-if="!message.isProcessing && message.routings && message.routings.length > 1"
+          class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm"
         >
-          <div
-            class="flex items-center justify-between cursor-pointer"
-            @click="showDetails = !showDetails"
-          >
-            <div class="flex items-center space-x-2">
-              <span class="font-medium text-blue-700 dark:text-blue-300">
-                {{ domainLabels[message.domain || ''] || message.domain }}
-              </span>
-              <span class="text-gray-400">|</span>
-              <span class="text-gray-600 dark:text-gray-400">{{ message.intent }}</span>
-              <span
-                v-if="message.confidence"
-                class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-              >
-                {{ (message.confidence * 100).toFixed(0) }}%
-              </span>
-            </div>
-            <svg
-              class="w-4 h-4 text-gray-400 transition-transform"
-              :class="showDetails ? 'rotate-180' : ''"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
+          <div class="text-gray-500 dark:text-gray-400 mb-2">
+            输入: "{{ message.originalInput }}"
           </div>
-
-          <!-- 展开的详细信息 -->
-          <div v-if="showDetails" class="mt-2 space-y-1">
-            <!-- Slots -->
-            <div v-if="message.slots && Object.keys(message.slots).length > 0">
-              <div class="text-gray-500 dark:text-gray-400 mb-1">参数:</div>
-              <pre class="bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto text-gray-700 dark:text-gray-300">{{ formatSlots(message.slots) }}</pre>
-            </div>
-            <!-- Meta 信息 -->
-            <div v-if="message.meta" class="flex items-center space-x-3 text-gray-500 dark:text-gray-400">
-              <span>⏱ {{ message.meta.latencyMs }}ms</span>
-              <span>📝 {{ message.meta.tokens.prompt }}+{{ message.meta.tokens.completion }} tokens</span>
-              <span>🤖 {{ message.meta.model }}</span>
-            </div>
+          <div class="text-gray-600 dark:text-gray-300 mb-1">改写结果:</div>
+          <div
+            v-for="(routing, index) in message.routings"
+            :key="index"
+            class="flex items-center space-x-2 py-1"
+          >
+            <span class="text-gray-400">{{ index + 1 }}.</span>
+            <span class="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 text-xs">
+              {{ domainLabels[routing.domain] || routing.domain }}
+            </span>
+            <span class="text-gray-700 dark:text-gray-300">{{ routing.rewrittenQuery }}</span>
           </div>
         </div>
 

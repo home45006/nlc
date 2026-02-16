@@ -9,6 +9,7 @@ import type { ChatMessage, DialogOutput, LLMProvider, StateChange } from '../typ
 import type { DomainType } from '../types/domain.js'
 import type {
   MultiIntentRouting,
+  DomainRouting,
   DomainContext,
   DomainResult,
   Command,
@@ -23,6 +24,10 @@ const MAX_HISTORY_MESSAGES = 60
 export interface DialogResult {
   readonly output: DialogOutput
   readonly stateChanges: ReadonlyArray<StateChange>
+  /** 路由信息（包含改写后的 query） */
+  readonly routings?: ReadonlyArray<DomainRouting>
+  /** 原始用户输入 */
+  readonly originalInput?: string
 }
 
 /**
@@ -104,6 +109,8 @@ export class NewDialogManager {
         },
       },
       stateChanges,
+      routings: routing.routings,
+      originalInput: userInput,
     }
   }
 
