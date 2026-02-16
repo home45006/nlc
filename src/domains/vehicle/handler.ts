@@ -16,6 +16,9 @@ import { parseIntentToCommands, generateTtsText } from './intent-parser.js'
 import { Domain } from '../../types/domain.js'
 import type { LLMProvider } from '../../types/llm.js'
 
+// 旁路模式：跳过意图提取，直接返回落域结果
+const BYPASS_INTENT_EXTRACTION = true
+
 /**
  * 车控领域处理器
  */
@@ -32,7 +35,15 @@ export class VehicleControlHandler extends BaseDomainHandler {
    * 处理车控路由
    */
   async handle(routing: DomainRouting, context: DomainContext): Promise<DomainResult> {
-    // 调用小模型进行意图解析
+    // 旁路模式：直接返回落域结果，跳过意图提取
+    if (BYPASS_INTENT_EXTRACTION) {
+      return this.createResult('bypass', { rewrittenQuery: routing.rewrittenQuery }, [], {
+        ttsText: `[车控领域] 改写后: "${routing.rewrittenQuery}"`,
+        confidence: routing.confidence,
+      })
+    }
+
+    // 正常模式：调用小模型进行意图解析
     const intentResult = await this.model.parseIntent(routing.rewrittenQuery, context)
 
     if (intentResult.confidence < 0.3 || intentResult.intent === 'unknown') {
