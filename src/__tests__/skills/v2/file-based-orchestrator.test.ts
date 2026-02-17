@@ -222,20 +222,20 @@ capabilities:
       expect(result.intents?.[0].capability).toBe('ac_control')
     })
 
-    it('应该处理无意图的情况（走闲聊）', async () => {
+    it('应该处理无意图的情况（走兜底回复）', async () => {
       createTestSkill(
         'chat',
         `id: chat
-name: 闲聊
-description: 智能问答
+name: 智能问答
+description: 实用工具类能力
 domain: chat
 priority: 100
 enabled: true
 capabilities:
-  - name: general_chat
-    description: 闲聊
+  - name: weather_query
+    description: 天气查询
 `,
-        '# 闲聊指令'
+        '# 智能问答指令'
       )
 
       orchestrator = new FileBasedSkillOrchestrator(mockLLMProvider, {
@@ -244,21 +244,28 @@ capabilities:
 
       await orchestrator.initialize()
 
-      // Mock LLM 返回空意图
+      // Mock LLM 返回空意图（第一次调用：意图识别）
       vi.mocked(mockLLMProvider.chat).mockResolvedValueOnce({
         content: JSON.stringify({
-          reasoning: '这是闲聊',
+          reasoning: '无法识别特定意图',
           intents: [],
         }),
         usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
       })
 
-      const result = await orchestrator.process('今天天气怎么样', {
+      // Mock LLM 返回兜底回复（第二次调用：生成回复）
+      vi.mocked(mockLLMProvider.chat).mockResolvedValueOnce({
+        content: '我暂时无法理解您的请求，请换个方式说说看。',
+        usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
+      })
+
+      const result = await orchestrator.process('今天心情怎么样', {
         vehicleState: mockVehicleState,
         dialogHistory: [],
       })
 
       expect(result.success).toBe(true)
+      expect(result.response).toBe('我暂时无法理解您的请求，请换个方式说说看。')
     })
   })
 

@@ -1,40 +1,20 @@
 # 智能问答 Skill 元数据
 id: chat
 name: 智能问答
-description: 通用问答和闲聊功能，包括自由聊天、车辆问答和天气查询
+description: 实用工具类能力，包括天气查询、计算器和系统信息
 domain: chat
 version: "1.0.0"
 priority: 10
 enabled: true
 tags:
-  - chat
-  - qa
-  - conversation
+  - tools
+  - utility
   - script
 
 # 脚本配置目录
 scriptsDir: scripts
 
 capabilities:
-  - name: free_chat
-    description: 自由聊天 - 日常对话和问候
-    examples:
-      - 你好
-      - 今天天气怎么样
-      - 讲个笑话
-      - 计算一下 123 乘以 456
-      - 系统状态怎么样
-    slots:
-      - name: message
-        type: string
-        required: false
-        description: 用户消息内容
-    keywords:
-      - 你好
-      - 谢谢
-      - 再见
-      - 计算
-
   - name: vehicle_qa
     description: 车辆问答 - 关于车辆功能的问题
     examples:

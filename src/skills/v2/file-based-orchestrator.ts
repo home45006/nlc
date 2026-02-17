@@ -26,6 +26,8 @@ import type {
 import type { ScriptCapabilityExtension } from './types.js'
 import { FileBasedSkillRegistry } from './file-based-skill-registry.js'
 import { SkillExecutor, type CapabilityHandler } from './skill-executor.js'
+import type { SkillScriptDir } from './script-capability-handler.js'
+import { resolve } from 'node:path'
 
 /**
  * Orchestrator 配置选项
@@ -95,6 +97,7 @@ export class FileBasedSkillOrchestrator {
       enableScripts: options?.enableScripts ?? true,
       scriptConfig: {
         skillsRootDir: options?.skillsDirectory || process.env.SKILLS_DIR || 'skills',
+        llmProvider: provider,
       },
     })
     this.options = {
@@ -120,8 +123,8 @@ export class FileBasedSkillOrchestrator {
     await this.registry.scanSkillsDirectory(this.options.skillsDirectory)
     this.skills = this.registry.getAllSkills()
 
-    // 注册能力处理器
-    this.registerCapabilityHandlers()
+    // 注册能力处理器（包含异步的脚本目录初始化）
+    await this.registerCapabilityHandlers()
 
     this.initialized = true
 
@@ -134,14 +137,33 @@ export class FileBasedSkillOrchestrator {
    * 注册能力处理器
    *
    * 将 FileBasedSkill 的 execute 方法注册到 SkillExecutor
-   * 同时注册脚本扩展（如果有）
+   * 同时注册脚本扩展（如果有）并初始化 skill 级别的脚本目录
    */
-  private registerCapabilityHandlers(): void {
+  private async registerCapabilityHandlers(): Promise<void> {
+    // 收集各 skill 的脚本目录信息
+    const skillScriptDirs: SkillScriptDir[] = []
+
     for (const skill of this.skills) {
+      // 获取 FileBasedSkill 对象以访问 skillDir 和 scriptsDir
+      const fileBasedSkill = this.registry.getFileBasedSkill(skill.id)
+
+      // 检查 skill 是否配置了 scriptsDir
+      const scriptsDir = fileBasedSkill?.metadata?.scriptsDir as string | undefined
+      if (scriptsDir && fileBasedSkill && this.options.enableScripts) {
+        const fullScriptsDir = resolve(fileBasedSkill.getSkillDir(), scriptsDir)
+        skillScriptDirs.push({ skillId: skill.id, scriptsDir: fullScriptsDir })
+      }
+
+      // 构建原始能力定义的索引（保留 script 扩展字段）
+      const rawCapMap = new Map(
+        (fileBasedSkill?.rawCapabilities ?? []).map(c => [c.name, c])
+      )
+
       // 为每个能力创建处理器
       for (const capability of skill.capabilities) {
-        // 检查是否有脚本扩展配置
-        const scriptExt = (capability as unknown as { script?: ScriptCapabilityExtension }).script
+        // 从原始能力定义获取脚本扩展配置（toSkillCapability 会丢弃 script 字段）
+        const rawCap = rawCapMap.get(capability.name)
+        const scriptExt = rawCap?.script
 
         // 注册脚本扩展
         if (scriptExt && this.options.enableScripts) {
@@ -171,6 +193,14 @@ export class FileBasedSkillOrchestrator {
         }
 
         this.executor.registerCapabilityHandler(skill.id, capability.name, handler)
+      }
+    }
+
+    // 初始化脚本处理器（如果有 skill 脚本目录）
+    if (skillScriptDirs.length > 0) {
+      const scriptHandler = this.executor.getScriptHandler()
+      if (scriptHandler) {
+        await scriptHandler.initializeForSkills(skillScriptDirs)
       }
     }
   }
@@ -332,39 +362,76 @@ export class FileBasedSkillOrchestrator {
 
   /**
    * 使用 Chat 处理（无意图时）
+   *
+   * Chat skill 作为兜底处理器，当其他 skill 都无法匹配时使用
+   * 直接调用 LLM 生成闲聊回复
    */
   private async handleAsChat(
     userQuery: string,
     context: OrchestratorContext
   ): Promise<OrchestrationResult> {
-    const chatSkill = this.skills.find(s => s.id === 'chat')
+    // 构建闲聊 prompt
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content: `你是一个友好、专业的智能座舱助手。你的职责是：
+1. 友好地回应用户的问候和闲聊
+2. 当用户的问题不属于车辆控制、音乐、导航等特定领域时，提供有帮助的回答
+3. 如果用户似乎想要执行某个操作但表达不清楚，可以友好地询问更多细节
 
-    if (!chatSkill) {
-      return {
-        success: true,
-        response: '我暂时无法理解您的请求，请换个方式说说看。',
-        skillResults: [],
-        commands: [],
-      }
+请保持回复简洁（1-2句话），适合语音播报。`,
+      },
+    ]
+
+    // 添加车辆状态上下文
+    messages.push({
+      role: 'user',
+      content: this.buildContextMessage(context.vehicleState),
+    })
+
+    // 添加对话历史
+    if (context.dialogHistory.length > 0) {
+      const history = context.dialogHistory.slice(-this.options.maxHistoryLength)
+      messages.push(...history)
     }
 
-    const result = await this.executor.executeCapability(
-      'chat',
-      'general_chat',
-      { query: userQuery },
-      {
-        vehicleState: context.vehicleState,
-        dialogHistory: context.dialogHistory,
-        previousDomain: context.previousDomain as SkillContext['previousDomain'],
-      }
-    )
+    // 添加当前查询
+    messages.push({ role: 'user', content: userQuery })
 
-    return {
-      success: true,
-      response: result.ttsText || '',
-      skillResults: [result],
-      commands: [],
-      intents: [],
+    try {
+      const response = await this.provider.chat({
+        messages,
+        temperature: 0.7, // 稍高的温度使回复更自然
+        maxTokens: 200,
+      })
+
+      const chatResponse = response.content || '我暂时无法理解您的请求，请换个方式说说看。'
+
+      return {
+        success: true,
+        response: chatResponse,
+        skillResults: [
+          {
+            success: true,
+            intent: 'free_chat',
+            slots: { message: userQuery },
+            commands: [],
+            ttsText: chatResponse,
+            confidence: 1.0,
+          },
+        ],
+        commands: [],
+        intents: [],
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      return {
+        success: false,
+        response: '抱歉，处理您的请求时出现了问题。',
+        skillResults: [],
+        commands: [],
+        error: errorMessage,
+      }
     }
   }
 
@@ -393,9 +460,14 @@ export class FileBasedSkillOrchestrator {
 
   /**
    * 构建意图识别 Prompt
+   *
+   * 所有已注册 Skill 的能力都参与意图识别。
+   * 当 LLM 无法匹配任何能力时，回退到 handleAsChat() 兜底处理。
    */
   private async buildIntentRecognitionPrompt(): Promise<string> {
-    const capabilityDescriptions = await this.registry.getCapabilityDescriptions()
+    const skillIds = this.skills.map(s => s.id)
+
+    const capabilityDescriptions = await this.registry.getCapabilityDescriptions(skillIds)
 
     return `# 智能座舱助手 - 意图识别
 
@@ -428,7 +500,8 @@ ${capabilityDescriptions}
 1. **多意图**：用户的请求可能包含多个意图，每个意图返回一个对象
 2. **槽位提取**：根据用户输入提取相应的参数
 3. **置信度**：0.9+ 非常确定，0.7-0.9 比较确定，0.5-0.7 有些不确定
-4. **无法识别时**：返回空 intents 数组，系统会使用 Chat 处理`
+4. **无法识别时**：返回空 intents 数组，系统会使用 Chat 处理
+5. **严格匹配**：只匹配上述列出的能力，不要随意创建新的能力名称`
   }
 
   /**

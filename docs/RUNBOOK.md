@@ -26,7 +26,6 @@ npm start
 | `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
 | `CLAUDE_API_KEY` | 否 | Claude API Key（未实现） | - |
 | `DEFAULT_MODEL` | 否 | 默认模型选择 | `gemini` |
-| `SKILLS_DIR` | 否 | Skills 目录路径 | `skills` |
 
 ### 端口说明
 

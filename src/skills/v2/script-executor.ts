@@ -119,6 +119,13 @@ export class ScriptExecutor {
   }
 
   /**
+   * 获取脚本基础路径
+   */
+  getScriptsBasePath(): string {
+    return this.scriptsBasePath
+  }
+
+  /**
    * 执行脚本
    */
   async execute(

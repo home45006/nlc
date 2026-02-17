@@ -13,6 +13,7 @@ import type { Skill, SkillCapability, SkillInput, SkillContext, SkillResult } fr
 import {
   type SkillMetadataYaml,
   type SkillInstructions,
+  type CapabilityDefinition,
   isSkillMetadataYaml,
   toSkillCapability,
 } from './types.js'
@@ -30,6 +31,8 @@ export class FileBasedSkill implements Skill {
   readonly domain: string
   readonly capabilities: SkillCapability[]
   readonly metadata: Record<string, unknown>
+  /** 原始能力定义（保留 script 等扩展字段） */
+  readonly rawCapabilities: ReadonlyArray<CapabilityDefinition>
 
   private instructionsLoaded = false
   private instructionsCache: SkillInstructions | null = null
@@ -45,6 +48,7 @@ export class FileBasedSkill implements Skill {
     this.name = metadata.name
     this.description = metadata.description
     this.domain = metadata.domain
+    this.rawCapabilities = metadata.capabilities ?? []
     this.capabilities = metadata.capabilities?.map(toSkillCapability) ?? []
     this.metadata = {
       version: metadata.version,
@@ -53,9 +57,17 @@ export class FileBasedSkill implements Skill {
       enabled: metadata.enabled,
       dependencies: metadata.dependencies,
       tags: metadata.tags,
+      scriptsDir: metadata.scriptsDir,
     }
     this.skillDir = skillDir
     this.loader = loader
+  }
+
+  /**
+   * 获取 Skill 目录路径
+   */
+  getSkillDir(): string {
+    return this.skillDir
   }
 
   /**

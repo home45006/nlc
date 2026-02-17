@@ -192,18 +192,10 @@ describe('FileBasedSkills', () => {
       const capNames = capabilities.map(c => c.name).sort()
       expect(capNames).toEqual([
         'calculator',
-        'free_chat',
         'system_info',
         'vehicle_qa',
         'weather_query',
       ])
-    })
-
-    it('should have free_chat capability', () => {
-      const freeChat = chatSkill?.capabilities?.find(c => c.name === 'free_chat')
-      expect(freeChat).toBeDefined()
-      expect(freeChat?.description).toContain('自由聊天')
-      expect(freeChat?.keywords).toContain('你好')
     })
 
     it('should have vehicle_qa with required question slot', () => {

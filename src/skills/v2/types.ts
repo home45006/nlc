@@ -96,6 +96,8 @@ export interface SkillMetadataYaml {
   readonly tags?: ReadonlyArray<string>
   /** 依赖的其他 Skill ID */
   readonly dependencies?: ReadonlyArray<string>
+  /** 脚本配置目录（相对于 skill 目录） */
+  readonly scriptsDir?: string
 
   // ============== 能力定义（可选，也可单独文件） ==============
 

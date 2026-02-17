@@ -1,6 +1,6 @@
 # 架构总览
 
-> 更新时间: 2026-02-17 | 源文件: 55 | 测试文件: 18
+> 更新时间: 2026-02-17 | 源文件: 62 | 测试文件: 22
 
 ## 系统定位
 
@@ -26,6 +26,9 @@
 |  FileBasedSkillRegistry - Skill 注册和元数据管理          |
 |  SkillExecutor - 能力执行器                               |
 |  SkillLoader - 文件系统加载                               |
+|  ScriptExecutor - 外部脚本执行器                          |
+|  SandboxManager - 沙箱管理器                              |
+|  ScriptCapabilityHandler - 脚本能力处理器                 |
 +---------------------------------------------------------+
 |  控制器层 (src/controller/)                              |
 |  CentralController (大模型落域+改写)                      |
@@ -133,6 +136,75 @@ StateChange[] + TTS 文本
 +---------------------------------------------------------+
 ```
 
+## 脚本执行子系统架构
+
+```
++---------------------------------------------------------+
+|  scripts.yaml 配置文件                                   |
+|  +-- settings (默认超时、解释器、网络权限)                |
+|  +-- scripts[] (脚本列表)                                |
+|      +-- id, name, path, interpreter                    |
+|      +-- timeout, env, capabilities                     |
++---------------------------------------------------------+
+                           |
+                           v
++---------------------------------------------------------+
+|  ScriptConfigLoader                                      |
+|  - load()  加载配置并验证                                |
+|  - validatePath()  路径安全检查                          |
+|  - findByCapability()  按能力查找脚本                   |
++---------------------------------------------------------+
+                           |
+                           v
++---------------------------------------------------------+
+|  ScriptCapabilityHandler                                 |
+|  - handle()  处理脚本能力调用                            |
+|  - validateInput()  输入验证                            |
+|  - buildArgs()  构建脚本参数                            |
+|  - processResult()  处理执行结果                        |
++---------------------------------------------------------+
+                           |
+            +--------------+--------------+
+            |                             |
+            v                             v
++---------------------+       +---------------------+
+|  ScriptExecutor     |       |  SandboxManager     |
+|  - execute()        |       |  (可选沙箱隔离)     |
+|  - spawn 子进程     |       |  - 路径白名单       |
+|  - 超时控制         |       |  - 环境隔离         |
+|  - 输出收集         |       |  - 资源限制         |
++---------------------+       +---------------------+
+            |                             |
+            +--------------+--------------+
+                           |
+                           v
++---------------------------------------------------------+
+|  InputValidator              ResultFormatter            |
+|  - isSafeString()  安全检查   - format()  格式化输出   |
+|  - sanitizeString()  清理     - generateTtsText()      |
+|  - validate()  验证规则       - applyTemplate()        |
++---------------------------------------------------------+
+```
+
+### 支持的解释器
+
+| 解释器 | 路径 | 用途 |
+|--------|------|------|
+| bash | /bin/bash | Shell 脚本 |
+| sh | /bin/sh | POSIX Shell |
+| node | process.execPath | JavaScript |
+| python3 | python3 | Python 脚本 |
+| auto | (自动检测) | 根据扩展名判断 |
+
+### 安全措施
+
+| 层面 | 措施 |
+|------|------|
+| 路径安全 | 禁止 ..、绝对路径、命令替换 |
+| 输入验证 | 危险字符过滤、长度限制 |
+| 执行隔离 | spawn 而非 exec、超时控制 |
+| 沙箱模式 | 路径白名单、环境隔离、资源限制 |
+
 ## 三层加载策略
 
 | 层级 | 文件 | 加载时机 | Token 消耗 | 用途 |
@@ -157,6 +229,13 @@ StateChange[] + TTS 文本
 | file-based-skill-registry | Skill 注册表 | src/skills/v2/file-based-skill-registry.ts |
 | skill-executor | 能力执行器 | src/skills/v2/skill-executor.ts |
 | file-based-orchestrator | 编排器 | src/skills/v2/file-based-orchestrator.ts |
+| **脚本执行子系统** | | |
+| script-executor | 外部脚本执行器 | src/skills/v2/script-executor.ts |
+| script-config-loader | 脚本配置加载器 | src/skills/v2/script-config-loader.ts |
+| sandbox-manager | 沙箱管理器 | src/skills/v2/sandbox-manager.ts |
+| script-capability-handler | 脚本能力处理器 | src/skills/v2/script-capability-handler.ts |
+| input-validator | 输入验证器 | src/skills/v2/input-validator.ts |
+| result-formatter | 结果格式化器 | src/skills/v2/result-formatter.ts |
 | **通用 Skill 类型** | | |
 | types | Skill 类型定义 | src/skills/types.ts |
 | index | Skill 模块入口 | src/skills/index.ts |
@@ -244,20 +323,21 @@ StateChange[] + TTS 文本
 
 | 测试类型 | 文件位置 | 数量 |
 |----------|----------|------|
-| 单元测试 | src/__tests__/ | 18 |
+| 单元测试 | src/__tests__/ | 22 |
 | 冒烟测试 | test/smoke-test.ts | 1 |
 
 ### 测试模块分布
 
 | 模块 | 测试文件 |
 |------|----------|
-| Skills V2 | yaml-parser, types, skill-loader, file-based-orchestrator, skill-executor, file-based-skill-registry |
+| Skills V2 | yaml-parser, types, skill-loader, file-based-orchestrator, skill-executor, file-based-skill-registry, script-executor, input-validator, script-integration |
 | Skills 通用 | index, types, file-based-skills, integration |
 | LLM | orchestrator, function-registry, prompt-builder |
 | Controller | central-controller |
 | Dialog | dialog-manager |
 | Executor | command-executor, vehicle-state |
 | Config | config, constants |
+| CLI | renderer |
 
 ## 关键设计模式
 
@@ -270,7 +350,19 @@ StateChange[] + TTS 文本
 
 ## 架构变更记录
 
-### 2026-02-17
+### 2026-02-17 (下午)
+- 新增脚本执行子系统
+- 新增 `src/skills/v2/script-executor.ts` - 外部脚本执行器
+- 新增 `src/skills/v2/script-config-loader.ts` - 脚本配置加载器
+- 新增 `src/skills/v2/sandbox-manager.ts` - 沙箱管理器
+- 新增 `src/skills/v2/script-capability-handler.ts` - 脚本能力处理器
+- 新增 `src/skills/v2/input-validator.ts` - 输入验证器
+- 新增 `src/skills/v2/result-formatter.ts` - 结果格式化器
+- 新增 `skills/chat/scripts/scripts.yaml` - Chat Skill 脚本配置
+- 支持 bash、node、python3 解释器
+- 实现沙箱隔离和输入验证安全措施
+
+### 2026-02-17 (上午)
 - 实现文件系统级 Skills V2 架构
 - 新增 `skills/` 目录存放 Skill 配置
 - 新增 `src/skills/v2/` 模块

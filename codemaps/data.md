@@ -477,3 +477,120 @@ LLMProvider (接口)
 | `skills/types.ts` | Skill 通用类型 | Skill, SkillCapability, SkillResult |
 | `skills/v2/types.ts` | Skill V2 类型 | SkillMetadataYaml, CapabilityDefinition |
 | `skills/v2/file-based-orchestrator.ts` | 编排类型 | OrchestrationResult, OrchestratorContext |
+| `skills/v2/script-executor.ts` | 脚本执行 | ScriptConfig, ScriptResult, InterpreterType |
+| `skills/v2/script-config-loader.ts` | 脚本配置 | ScriptsConfigFile, ConfigLoadResult |
+| `skills/v2/sandbox-manager.ts` | 沙箱管理 | SandboxConfig, SandboxResult |
+| `skills/v2/input-validator.ts` | 输入验证 | ValidationRule, ValidationResult |
+| `skills/v2/result-formatter.ts` | 结果格式化 | OutputFormat, FormatOptions, FormattedResult |
+
+## 脚本执行类型 (`src/skills/v2/script-executor.ts`)
+
+```typescript
+// 解释器类型
+type InterpreterType = 'bash' | 'sh' | 'node' | 'python' | 'python3' | 'auto'
+
+// 脚本配置
+interface ScriptConfig {
+  readonly id: string                    // 脚本唯一标识
+  readonly name: string                  // 脚本名称
+  readonly path: string                  // 脚本路径（相对）
+  readonly interpreter: InterpreterType  // 解释器类型
+  readonly timeout?: number              // 超时时间（毫秒）
+  readonly env?: Record<string, string>  // 环境变量
+  readonly allowNetwork?: boolean        // 是否允许网络
+  readonly allowWrite?: boolean          // 是否允许写入
+  readonly writeDirectories?: string[]   // 写入目录
+  readonly capabilities?: string[]       // 关联能力
+}
+
+// 脚本执行结果
+interface ScriptResult {
+  readonly success: boolean              // 是否成功
+  readonly stdout: string                // 标准输出
+  readonly stderr: string                // 标准错误
+  readonly exitCode: number | null       // 退出码
+  readonly duration: number              // 执行时长（毫秒）
+  readonly timedOut: boolean             // 是否超时
+  readonly error?: string                // 错误信息
+}
+
+// 执行选项
+interface ExecuteOptions {
+  readonly args?: string[]               // 脚本参数
+  readonly env?: Record<string, string>  // 额外环境变量
+  readonly timeout?: number              // 覆盖超时
+  readonly cwd?: string                  // 工作目录
+}
+```
+
+## 沙箱配置类型 (`src/skills/v2/sandbox-manager.ts`)
+
+```typescript
+// 沙箱配置
+interface SandboxConfig {
+  readonly allowedPaths: string[]        // 允许访问的路径
+  readonly deniedPaths?: string[]        // 禁止访问的路径
+  readonly networkDisabled?: boolean     // 禁用网络
+  readonly maxMemoryMB?: number          // 最大内存（MB）
+  readonly maxCpuTimeMs?: number         // 最大 CPU 时间
+  readonly writeDirectories?: string[]   // 写入目录
+  readonly maxOutputSize?: number        // 最大输出大小
+  readonly useTempWorkDir?: boolean      // 使用临时工作目录
+}
+
+// 沙箱执行结果
+interface SandboxResult extends ScriptResult {
+  readonly tempWorkDir?: string          // 临时工作目录
+}
+```
+
+## 输入验证类型 (`src/skills/v2/input-validator.ts`)
+
+```typescript
+// 验证规则
+interface ValidationRule {
+  readonly name: string                  // 参数名
+  readonly type: 'string' | 'number' | 'boolean' | 'enum'
+  readonly required?: boolean            // 是否必需
+  readonly minLength?: number            // 最小长度
+  readonly maxLength?: number            // 最大长度
+  readonly min?: number                  // 最小值
+  readonly max?: number                  // 最大值
+  readonly enumValues?: string[]         // 枚举值
+  readonly pattern?: string              // 正则模式
+  readonly validate?: (value: unknown) => boolean | string
+}
+
+// 验证结果
+interface ValidationResult {
+  readonly valid: boolean                // 是否有效
+  readonly errors: string[]              // 错误信息
+  readonly warnings: string[]            // 警告信息
+  readonly sanitizedValue?: unknown      // 清理后的值
+}
+```
+
+## 脚本配置文件结构 (`skills/*/scripts/scripts.yaml`)
+
+```yaml
+# 全局设置
+settings:
+  defaultTimeout: 5000        # 默认超时（毫秒）
+  defaultInterpreter: auto    # 默认解释器
+  allowNetwork: true          # 是否允许网络
+  allowWrite: false           # 是否允许写入
+
+# 脚本列表
+scripts:
+  - id: weather_query         # 脚本 ID
+    name: 天气查询
+    description: 查询天气信息
+    path: weather.sh          # 脚本路径
+    interpreter: bash         # 解释器
+    timeout: 10000            # 超时时间
+    allowNetwork: true        # 允许网络
+    capabilities:             # 关联能力
+      - weather_query
+    env:                      # 环境变量
+      API_KEY: ${WEATHER_API_KEY}
+```

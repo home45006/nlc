@@ -161,18 +161,31 @@ export function parseSimpleYaml(content: string): Record<string, unknown> {
       continue
     }
 
-    // 处理空值（可能是数组的开始）
+    // 处理空值（可能是数组或嵌套对象的开始）
     if (value === '' || value === '[]') {
-      // 检查下一行是否是数组项
-      const nextLine = lines[i + 1]
-      const nextTrimmed = nextLine?.trim()
-      if (nextTrimmed && nextTrimmed.startsWith('-')) {
+      // 查找后续第一个有效行（跳过空行和注释）
+      let nextNonEmptyTrimmed: string | undefined
+      let nextNonEmptyIndent = 0
+      for (let k = i + 1; k < lines.length; k++) {
+        const candidate = lines[k]
+        const candidateTrimmed = candidate.trim()
+        if (candidateTrimmed === '' || candidateTrimmed.startsWith('#')) continue
+        nextNonEmptyTrimmed = candidateTrimmed
+        nextNonEmptyIndent = candidate.length - candidate.trimStart().length
+        break
+      }
+      if (nextNonEmptyTrimmed && nextNonEmptyIndent > indent && nextNonEmptyTrimmed.startsWith('-')) {
         // 这是一个数组
         const arr: unknown[] = []
         currentObj[key] = arr
         // 把数组推入栈，后续的数组项会添加到这个数组
         // 数组项的缩进通常比 key: 多2
         stack.push({ container: arr, indent: indent + 2 })
+      } else if (nextNonEmptyTrimmed && nextNonEmptyIndent > indent && nextNonEmptyTrimmed.includes(':')) {
+        // 这是一个嵌套对象
+        const obj: Record<string, unknown> = {}
+        currentObj[key] = obj
+        stack.push({ container: obj, indent })
       } else {
         // 空字符串或空数组
         currentObj[key] = value === '[]' ? [] : ''

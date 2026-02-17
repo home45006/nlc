@@ -43,7 +43,7 @@ scripts:
     timeout: 3000
     allowNetwork: false
     capabilities:
-      - free_chat
+      - calculator
 
   # 系统信息脚本
   - id: system_info
@@ -54,5 +54,4 @@ scripts:
     timeout: 5000
     allowNetwork: false
     capabilities:
-      - free_chat
-      - vehicle_qa
+      - system_info

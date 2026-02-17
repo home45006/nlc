@@ -60,6 +60,69 @@ file-based-orchestrator.ts  编排器
  +   + buildIntentRecognitionPrompt() 构建 Prompt
  + OrchestrationResult  编排结果
  + OrchestratorContext  执行上下文
+
+### 1.1 脚本执行子系统 (`src/skills/v2/`)
+
+```
+script-executor.ts      外部脚本执行器
+ + ScriptExecutor
+ +   + execute()              执行脚本
+ +   + getInterpreter()       获取解释器路径
+ +   + registerConfig()       注册脚本配置
+ + ScriptConfig        脚本配置接口
+ + ScriptResult        执行结果接口
+ + ExecuteOptions      执行选项
+ + InterpreterType     解释器类型 (bash|sh|node|python|python3|auto)
+
+script-config-loader.ts  脚本配置加载器
+ + ScriptConfigLoader
+ +   + load()                 加载配置文件
+ +   + validateScriptConfig() 验证脚本配置
+ +   + validatePath()         路径安全检查
+ +   + findByCapability()     按能力查找脚本
+ + ScriptsConfigFile   配置文件结构
+ + ConfigLoadResult    加载结果
+
+sandbox-manager.ts      沙箱管理器
+ + SandboxManager
+ +   + executeInSandbox()     沙箱执行
+ +   + buildIsolatedEnv()     构建隔离环境
+ +   + isPathAllowed()        路径白名单检查
+ +   + cleanupTempDir()       清理临时目录
+ + SandboxConfig       沙箱配置
+ + SandboxResult       沙箱执行结果
+
+script-capability-handler.ts  脚本能力处理器
+ + ScriptCapabilityHandler
+ +   + initialize()           初始化
+ +   + hasScript()            检查脚本配置
+ +   + handle()               处理能力调用
+ +   + validateInput()        验证输入参数
+ +   + buildArgs()            构建脚本参数
+ +   + processResult()        处理执行结果
+ +   + formatOutput()         格式化输出
+ + ScriptHandlerConfig 处理器配置
+
+input-validator.ts      输入验证器
+ + InputValidator
+ +   + addRule()              添加验证规则
+ +   + validate()             验证输入对象
+ +   + validateString()       验证字符串
+ +   + validateNumber()       验证数字
+ +   + isSafeString()         安全字符串检查 (静态)
+ +   + sanitizeString()       清理字符串 (静态)
+ + ValidationRule      验证规则
+ + ValidationResult    验证结果
+
+result-formatter.ts     结果格式化器
+ + ResultFormatter
+ +   + format()               格式化结果
+ +   + parseOutput()          解析脚本输出
+ +   + applyTemplate()        应用模板
+ +   + generateTtsText()      生成 TTS 文本
+ + OutputFormat        输出格式 (json|text|structured|auto)
+ + FormatOptions       格式化选项
+ + FormattedResult     格式化结果
 ```
 
 ### 2. 通用 Skill 类型 (`src/skills/`)
@@ -118,6 +181,14 @@ skills/
     |   + capabilities: free_chat, vehicle_qa, weather_query
     +-- SKILL.md
     +-- examples/
+    +-- scripts/
+        +-- scripts.yaml       # 脚本配置文件
+        |   + settings: 默认超时、解释器
+        |   + scripts[]: 脚本列表
+        |       +-- weather_query (天气查询)
+        |       +-- calculator (计算器)
+        |       +-- system_info (系统信息)
+        +-- *.sh, *.js, *.py   # 脚本文件
 ```
 
 ### 4. 控制器层 (`src/controller/`)
