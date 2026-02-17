@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline'
 import type { LLMProvider } from '../types/index.js'
+import { Domain } from '../types/domain.js'
 import { NewDialogManager as DialogManager } from '../dialog/new-dialog-manager.js'
 import { ZhipuProvider } from '../llm/providers/zhipu.js'
 import { GeminiProvider } from '../llm/providers/gemini.js'
@@ -12,9 +13,25 @@ import {
   renderVehicleState,
   renderHelp,
   renderHistory,
+  renderVerboseResult,
+  type VerboseResult,
 } from './renderer.js'
 
 type ModelName = 'gemini' | 'glm' | 'claude'
+
+/** 有效的领域类型 */
+const VALID_DOMAINS = Object.values(Domain) as string[]
+
+/**
+ * 将字符串安全地转换为 DomainType
+ * 如果不是有效领域，返回 'chat' 作为默认值
+ */
+function normalizeDomain(domain: string): typeof Domain[keyof typeof Domain] {
+  if (VALID_DOMAINS.includes(domain)) {
+    return domain as typeof Domain[keyof typeof Domain]
+  }
+  return Domain.CHAT
+}
 
 interface ModelOption {
   readonly key: string
@@ -80,6 +97,7 @@ export async function startRepl(): Promise<void> {
   let provider = createProvider(selectedModel)
   const dialogManager = new DialogManager(provider)
   let debugMode = false
+  let verboseMode = false  // 详细执行流程模式
 
   renderBanner(provider.name)
 
@@ -99,12 +117,43 @@ export async function startRepl(): Promise<void> {
       }
 
       try {
+        const totalStartTime = Date.now()
+
         if (debugMode) {
           console.log(`\n  [debug] 发送到 ${provider.name}...`)
         }
 
+        // 收集详细的执行信息
         const result = await dialogManager.handleInput(trimmed)
-        renderResult(result.output, result.stateChanges, result.routings, result.originalInput)
+        const totalEndTime = Date.now()
+
+        if (verboseMode) {
+          // 详细模式：展示完整的业务执行流程
+          const verboseResult: VerboseResult = {
+            userInput: trimmed,
+            orchestrationResult: result.orchestrationResult,
+            stateChanges: result.stateChanges,
+            commands: result.orchestrationResult?.commands || [],
+            timings: {
+              orchestrator: result.output.meta.latencyMs,
+              execution: totalEndTime - totalStartTime - result.output.meta.latencyMs,
+              total: totalEndTime - totalStartTime,
+            },
+          }
+          renderVerboseResult(verboseResult)
+        } else {
+          // 普通模式
+          // 注意：NewDialogManager 的 output 没有 tokens 字段，需要补充默认值
+          const outputWithTokens = {
+            ...result.output,
+            domain: normalizeDomain(result.output.domain),
+            meta: {
+              ...result.output.meta,
+              tokens: { prompt: 0, completion: 0 },
+            },
+          }
+          renderResult(outputWithTokens, result.stateChanges, undefined, result.originalInput)
+        }
       } catch (error) {
         renderError(error)
       }
@@ -131,16 +180,11 @@ export async function startRepl(): Promise<void> {
         const validModels: ModelName[] = ['gemini', 'glm', 'claude']
         if (!arg || !validModels.includes(arg as ModelName)) {
           console.log(`\n  当前模型: ${provider.name}`)
-          console.log('  用法: /model gemini | /model glm | /model claude\n')
+          console.log('  用法: /model gemini | /model glm | /model claude')
+          console.log('  注意: 切换模型需要重启程序\n')
           break
         }
-        try {
-          provider = createProvider(arg as ModelName)
-          dialogManager.switchProvider(provider)
-          console.log(`\n  已切换到模型: ${provider.name}\n`)
-        } catch (error) {
-          renderError(error)
-        }
+        console.log(`\n  切换模型需要重启程序。当前模型: ${provider.name}\n`)
         break
       }
 
@@ -161,6 +205,21 @@ export async function startRepl(): Promise<void> {
       case '/debug':
         debugMode = !debugMode
         console.log(`\n  调试模式: ${debugMode ? '开启' : '关闭'}\n`)
+        break
+
+      case '/verbose':
+      case '/v':
+        verboseMode = !verboseMode
+        console.log(`\n  详细模式: ${verboseMode ? '开启' : '关闭'}\n`)
+        if (verboseMode) {
+          console.log('  将展示完整的业务执行流程，包括:')
+          console.log('    - 用户输入阶段')
+          console.log('    - Skill 编排阶段（意图识别、Skill 执行）')
+          console.log('    - 命令执行阶段')
+          console.log('    - 状态变更阶段')
+          console.log('    - 响应生成阶段')
+          console.log('')
+        }
         break
 
       case '/rewrite':

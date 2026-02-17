@@ -1,9 +1,22 @@
 import type { DialogOutput, StateChange, VehicleState } from '../types/index.js'
-import type { DomainRouting } from '../core/types.js'
+import type { DomainRouting, Command } from '../core/types.js'
+import type { OrchestrationResult } from '../skills/v2/file-based-orchestrator.js'
+import type { RecognizedIntent, SkillResult } from '../skills/types.js'
 import { MODE_MAP } from '../constants.js'
 
 const DIVIDER = '───────── 识别结果 ─────────'
 const DIVIDER_END = '────────────────────────────'
+
+// ANSI 颜色代码
+const CYAN = '\x1b[36m'
+const GREEN = '\x1b[32m'
+const YELLOW = '\x1b[33m'
+const BLUE = '\x1b[34m'
+const MAGENTA = '\x1b[35m'
+const RED = '\x1b[31m'
+const GRAY = '\x1b[90m'
+const RESET = '\x1b[0m'
+const BOLD = '\x1b[1m'
 
 export function renderBanner(model: string): void {
   console.log('')
@@ -102,13 +115,14 @@ export function renderHelp(): void {
   console.log('    /clear    清除对话历史')
   console.log('    /reset    重置车辆状态')
   console.log('    /rewrite  意图改写 (如: /rewrite 开空调并播放音乐)')
+  console.log('    /verbose  显示详细业务执行流程 (别名: /v)')
   console.log('    /debug    开关调试模式')
   console.log('    /quit     退出')
   console.log('────────────────────────')
   console.log('')
 }
 
-export function renderHistory(history: ReadonlyArray<{ role: string; content: string }>): void {
+export function renderHistory(history: ReadonlyArray<{ role: string; content: string | null }>): void {
   console.log('')
   console.log('───────── 对话历史 ─────────')
   if (history.length === 0) {
@@ -116,12 +130,173 @@ export function renderHistory(history: ReadonlyArray<{ role: string; content: st
   } else {
     for (const msg of history) {
       if (msg.role === 'user') {
-        console.log(`  你> ${msg.content}`)
+        console.log(`  你> ${msg.content || ''}`)
       } else if (msg.role === 'assistant' && msg.content) {
         console.log(`  小智> ${msg.content}`)
       }
     }
   }
   console.log('────────────────────────────')
+  console.log('')
+}
+
+// ==================== Verbose Result Rendering ====================
+
+/**
+ * 详细业务执行流程结果
+ */
+export interface VerboseResult {
+  /** 原始用户输入 */
+  readonly userInput: string
+  /** Orchestrator 完整结果 */
+  readonly orchestrationResult?: OrchestrationResult
+  /** 状态变更 */
+  readonly stateChanges: ReadonlyArray<StateChange>
+  /** 执行的命令 */
+  readonly commands: Command[]
+  /** 各阶段耗时 */
+  readonly timings: {
+    readonly orchestrator: number
+    readonly execution: number
+    readonly total: number
+  }
+}
+
+/**
+ * 渲染详细的业务执行流程
+ */
+export function renderVerboseResult(result: VerboseResult): void {
+  const { userInput, orchestrationResult, stateChanges, commands, timings } = result
+
+  renderVerboseHeader()
+  renderUserInputStage(userInput)
+  renderSkillOrchestrationStage(orchestrationResult, timings.orchestrator)
+  renderCommandExecutionStage(commands, timings.execution)
+  renderStateChangeStage(stateChanges)
+  renderResponseStage(orchestrationResult?.response)
+  renderVerboseFooter(timings.total)
+
+  // 最终输出
+  if (orchestrationResult?.response) {
+    console.log(`${GREEN}小智> ${orchestrationResult.response}${RESET}`)
+  }
+  console.log('')
+}
+
+// ==================== Verbose Stage Renderers ====================
+
+/** 渲染详细模式标题 */
+function renderVerboseHeader(): void {
+  console.log('')
+  console.log(`${BOLD}${CYAN}═══════════════════════════════════════════════════════════${RESET}`)
+  console.log(`${BOLD}${CYAN}                    业务执行流程详情                         ${RESET}`)
+  console.log(`${BOLD}${CYAN}═══════════════════════════════════════════════════════════${RESET}`)
+  console.log('')
+}
+
+/** 渲染用户输入阶段 */
+function renderUserInputStage(userInput: string): void {
+  console.log(`${BOLD}${BLUE}[1] 用户输入阶段${RESET}`)
+  console.log(`${GRAY}├─${RESET} 输入内容: "${GREEN}${userInput}${RESET}"`)
+  console.log(`${GRAY}└─${RESET} 输入长度: ${userInput.length} 字符`)
+  console.log('')
+}
+
+/** 渲染 Skill 编排阶段 */
+function renderSkillOrchestrationStage(
+  orchestrationResult: OrchestrationResult | undefined,
+  orchestratorTime: number
+): void {
+  console.log(`${BOLD}${BLUE}[2] Skill 编排阶段${RESET}`)
+
+  if (!orchestrationResult) {
+    console.log(`${GRAY}└─${RESET} 无编排结果`)
+    console.log('')
+    return
+  }
+
+  console.log(`${GRAY}├─${RESET} 处理状态: ${orchestrationResult.success ? `${GREEN}成功${RESET}` : `${RED}失败${RESET}`}`)
+  renderIntents(orchestrationResult.intents)
+  renderSkillResults(orchestrationResult.skillResults)
+  console.log(`${GRAY}└─${RESET} 耗时: ${orchestratorTime}ms`)
+  console.log('')
+}
+
+/** 渲染识别的意图 */
+function renderIntents(intents: RecognizedIntent[] | undefined): void {
+  if (!intents || intents.length === 0) {
+    console.log(`${GRAY}├─${RESET} 识别意图: ${YELLOW}无（使用 Chat 处理）${RESET}`)
+    return
+  }
+
+  console.log(`${GRAY}├─${RESET} 识别意图数: ${intents.length}`)
+  intents.forEach((intent, idx) => {
+    console.log(`${GRAY}│   ${RESET}[${idx + 1}] ${MAGENTA}${intent.skillId}${RESET}/${YELLOW}${intent.capability}${RESET}`)
+    console.log(`${GRAY}│       ${RESET}Slots: ${JSON.stringify(intent.slots)}`)
+    console.log(`${GRAY}│       ${RESET}置信度: ${(intent.confidence * 100).toFixed(0)}%`)
+  })
+}
+
+/** 渲染 Skill 执行结果 */
+function renderSkillResults(skillResults: SkillResult[]): void {
+  if (skillResults.length === 0) return
+
+  console.log(`${GRAY}├─${RESET} Skill 执行结果:`)
+  skillResults.forEach((sr, idx) => {
+    const status = sr.success ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`
+    console.log(`${GRAY}│   ${RESET}[${idx + 1}] ${status} ${sr.intent || 'unknown'}`)
+    if (sr.ttsText) {
+      console.log(`${GRAY}│       ${RESET}TTS: "${sr.ttsText}"`)
+    }
+  })
+}
+
+/** 渲染命令执行阶段 */
+function renderCommandExecutionStage(commands: Command[], executionTime: number): void {
+  console.log(`${BOLD}${BLUE}[3] 命令执行阶段${RESET}`)
+
+  if (commands.length === 0) {
+    console.log(`${GRAY}└─${RESET} 无命令生成`)
+  } else {
+    console.log(`${GRAY}├─${RESET} 生成命令数: ${commands.length}`)
+    commands.forEach((cmd, idx) => {
+      console.log(`${GRAY}│   ${RESET}[${idx + 1}] ${YELLOW}${cmd.type}${RESET}`)
+      console.log(`${GRAY}│       ${RESET}参数: ${JSON.stringify(cmd.params)}`)
+    })
+    console.log(`${GRAY}└─${RESET} 耗时: ${executionTime}ms`)
+  }
+  console.log('')
+}
+
+/** 渲染状态变更阶段 */
+function renderStateChangeStage(stateChanges: ReadonlyArray<StateChange>): void {
+  console.log(`${BOLD}${BLUE}[4] 状态变更阶段${RESET}`)
+
+  if (stateChanges.length === 0) {
+    console.log(`${GRAY}└─${RESET} 无状态变更`)
+  } else {
+    console.log(`${GRAY}├─${RESET} 状态变更数: ${stateChanges.length}`)
+    stateChanges.forEach((change, idx) => {
+      console.log(`${GRAY}│   ${RESET}[${idx + 1}] ${change.field}`)
+      console.log(`${GRAY}│       ${RESET} ${GRAY}${change.from}${RESET} → ${GREEN}${change.to}${RESET}`)
+    })
+  }
+  console.log('')
+}
+
+/** 渲染响应生成阶段 */
+function renderResponseStage(response: string | undefined): void {
+  console.log(`${BOLD}${BLUE}[5] 响应生成阶段${RESET}`)
+  if (response) {
+    console.log(`${GRAY}├─${RESET} TTS 响应: "${GREEN}${response}${RESET}"`)
+  }
+  console.log('')
+}
+
+/** 渲染详细模式页脚 */
+function renderVerboseFooter(totalTime: number): void {
+  console.log(`${BOLD}${CYAN}───────────────────────────────────────────────────────────${RESET}`)
+  console.log(`${BOLD}总耗时: ${YELLOW}${totalTime}ms${RESET} (${(totalTime / 1000).toFixed(2)}s)`)
+  console.log(`${BOLD}${CYAN}═══════════════════════════════════════════════════════════${RESET}`)
   console.log('')
 }
