@@ -1,0 +1,58 @@
+# Chat Skill 脚本配置
+#
+# 定义可由 chat skill 调用的外部脚本
+#
+# 安全说明：
+# - 脚本在沙箱环境中执行
+# - 所有输入参数都经过验证
+# - 执行超时自动终止
+
+settings:
+  # 默认超时时间（毫秒）
+  defaultTimeout: 5000
+  # 默认解释器
+  defaultInterpreter: auto
+  # 是否允许网络访问
+  allowNetwork: true
+  # 是否允许写入文件
+  allowWrite: false
+  # 允许写入的目录
+  writeDirectories: []
+
+scripts:
+  # 天气查询脚本
+  - id: weather_query
+    name: 天气查询
+    description: 查询指定城市的天气信息
+    path: weather.sh
+    interpreter: bash
+    timeout: 10000
+    allowNetwork: true
+    capabilities:
+      - weather_query
+    env:
+      # 可在 .env 中配置 API Key
+      # WEATHER_API_KEY: ${WEATHER_API_KEY}
+
+  # 计算器脚本
+  - id: calculator
+    name: 计算器
+    description: 执行数学计算
+    path: calc.js
+    interpreter: node
+    timeout: 3000
+    allowNetwork: false
+    capabilities:
+      - free_chat
+
+  # 系统信息脚本
+  - id: system_info
+    name: 系统信息
+    description: 获取系统状态信息
+    path: sysinfo.py
+    interpreter: python3
+    timeout: 5000
+    allowNetwork: false
+    capabilities:
+      - free_chat
+      - vehicle_qa

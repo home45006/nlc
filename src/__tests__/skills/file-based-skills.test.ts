@@ -187,11 +187,13 @@ describe('FileBasedSkills', () => {
       expect(chatSkill?.domain).toBe(Domain.CHAT)
     })
 
-    it('should have all 3 capabilities defined', () => {
+    it('should have all capabilities defined', () => {
       const capabilities = chatSkill?.capabilities ?? []
       const capNames = capabilities.map(c => c.name).sort()
       expect(capNames).toEqual([
+        'calculator',
         'free_chat',
+        'system_info',
         'vehicle_qa',
         'weather_query',
       ])

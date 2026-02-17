@@ -8,10 +8,17 @@
  * - 槽位验证
  * - 指令生成
  * - 错误处理
+ * - 脚本能力支持
  */
 
 import type { Command } from '../../core/types.js'
 import type { SkillContext, SkillResult, CapabilitySlot } from '../types.js'
+import type { ScriptCapabilityExtension } from './types.js'
+import {
+  ScriptCapabilityHandler,
+  createScriptCapabilityHandler,
+  type ScriptHandlerConfig,
+} from './script-capability-handler.js'
 
 /**
  * 能力处理器函数类型
@@ -39,6 +46,10 @@ export interface CapabilityDefinition {
 export interface SkillExecutorOptions {
   /** 是否启用槽位验证 */
   validateSlots?: boolean
+  /** 是否启用脚本能力 */
+  enableScripts?: boolean
+  /** 脚本处理器配置 */
+  scriptConfig?: ScriptHandlerConfig
 }
 
 /**
@@ -48,6 +59,8 @@ export interface ExecutionRequest {
   skillId: string
   capability: string
   slots: Record<string, unknown>
+  /** 脚本扩展配置（可选） */
+  scriptExtension?: ScriptCapabilityExtension
 }
 
 /**
@@ -58,7 +71,9 @@ export interface ExecutionRequest {
 export class SkillExecutor {
   private readonly capabilityHandlers: Map<string, Map<string, CapabilityHandler>> = new Map()
   private readonly capabilityDefinitions: Map<string, Map<string, CapabilityDefinition>> = new Map()
-  private readonly options: Required<SkillExecutorOptions>
+  private readonly scriptExtensions: Map<string, Map<string, ScriptCapabilityExtension>> = new Map()
+  private readonly options: Required<Omit<SkillExecutorOptions, 'scriptConfig'>> & { scriptConfig?: ScriptHandlerConfig }
+  private scriptHandler: ScriptCapabilityHandler | null = null
 
   constructor(
     handlers?: Record<string, Record<string, CapabilityHandler>>,
@@ -67,6 +82,8 @@ export class SkillExecutor {
   ) {
     this.options = {
       validateSlots: options?.validateSlots ?? true,
+      enableScripts: options?.enableScripts ?? true,
+      scriptConfig: options?.scriptConfig,
     }
 
     // 注册传入的处理器
@@ -86,6 +103,11 @@ export class SkillExecutor {
         }
       }
     }
+
+    // 初始化脚本处理器
+    if (this.options.enableScripts && this.options.scriptConfig) {
+      this.scriptHandler = createScriptCapabilityHandler(this.options.scriptConfig)
+    }
   }
 
   /**
@@ -95,14 +117,23 @@ export class SkillExecutor {
    * @param capability - 能力名称
    * @param slots - 槽位参数
    * @param context - 执行上下文
+   * @param scriptExtension - 脚本扩展配置（可选）
    * @returns 执行结果
    */
   async executeCapability(
     skillId: string,
     capability: string,
     slots: Record<string, unknown>,
-    context: SkillContext
+    context: SkillContext,
+    scriptExtension?: ScriptCapabilityExtension
   ): Promise<SkillResult> {
+    // 优先检查脚本扩展
+    const extension = scriptExtension ?? this.getScriptExtension(skillId, capability)
+    if (extension && this.scriptHandler) {
+      return this.executeScriptCapability(skillId, capability, slots, extension, context)
+    }
+
+    // 使用代码处理器
     const handler = this.getCapabilityHandler(skillId, capability)
 
     if (!handler) {
@@ -129,6 +160,41 @@ export class SkillExecutor {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       return this.createErrorResult(errorMessage, 'EXECUTION_ERROR', capability, slots)
+    }
+  }
+
+  /**
+   * 执行脚本能力
+   */
+  private async executeScriptCapability(
+    skillId: string,
+    capability: string,
+    slots: Record<string, unknown>,
+    extension: ScriptCapabilityExtension,
+    context: SkillContext
+  ): Promise<SkillResult> {
+    if (!this.scriptHandler) {
+      return this.createErrorResult(
+        'Script handler not initialized',
+        'SCRIPT_NOT_INITIALIZED',
+        capability,
+        slots
+      )
+    }
+
+    try {
+      // 确保脚本处理器已初始化
+      await this.scriptHandler.initialize()
+
+      return await this.scriptHandler.handle(skillId, capability, slots, extension, context)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      return this.createErrorResult(
+        `Script execution error: ${errorMessage}`,
+        'SCRIPT_ERROR',
+        capability,
+        slots
+      )
     }
   }
 
@@ -240,11 +306,44 @@ export class SkillExecutor {
   }
 
   /**
+   * 注册脚本扩展
+   */
+  registerScriptExtension(
+    skillId: string,
+    capability: string,
+    extension: ScriptCapabilityExtension
+  ): void {
+    if (!this.scriptExtensions.has(skillId)) {
+      this.scriptExtensions.set(skillId, new Map())
+    }
+    this.scriptExtensions.get(skillId)!.set(capability, extension)
+  }
+
+  /**
+   * 获取脚本扩展
+   */
+  getScriptExtension(
+    skillId: string,
+    capability: string
+  ): ScriptCapabilityExtension | undefined {
+    const skillExts = this.scriptExtensions.get(skillId)
+    return skillExts?.get(capability)
+  }
+
+  /**
    * 清除所有处理器
    */
   clear(): void {
     this.capabilityHandlers.clear()
     this.capabilityDefinitions.clear()
+    this.scriptExtensions.clear()
+  }
+
+  /**
+   * 获取脚本处理器
+   */
+  getScriptHandler(): ScriptCapabilityHandler | null {
+    return this.scriptHandler
   }
 
   /**

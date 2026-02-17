@@ -9,7 +9,7 @@
  * 三层加载策略：
  * - 第一层：启动时加载 skill.yaml 元数据
  * - 第二层：意图识别后按需加载 SKILL.md 指令
- * - 第三层：执行时使用能力处理器
+ * - 第三层：执行时使用能力处理器或脚本
  */
 
 import type { LLMProvider, ChatMessage } from '../../types/llm.js'
@@ -23,6 +23,7 @@ import type {
   RecognizedIntent,
   IntentRecognitionResult,
 } from '../types.js'
+import type { ScriptCapabilityExtension } from './types.js'
 import { FileBasedSkillRegistry } from './file-based-skill-registry.js'
 import { SkillExecutor, type CapabilityHandler } from './skill-executor.js'
 
@@ -40,6 +41,8 @@ export interface FileBasedOrchestratorOptions {
   enableLogging?: boolean
   /** 是否展示 LLM 思考过程 */
   showThinking?: boolean
+  /** 是否启用脚本能力 */
+  enableScripts?: boolean
 }
 
 /**
@@ -88,13 +91,19 @@ export class FileBasedSkillOrchestrator {
   constructor(provider: LLMProvider, options?: FileBasedOrchestratorOptions) {
     this.provider = provider
     this.registry = new FileBasedSkillRegistry()
-    this.executor = new SkillExecutor()
+    this.executor = new SkillExecutor(undefined, undefined, {
+      enableScripts: options?.enableScripts ?? true,
+      scriptConfig: {
+        skillsRootDir: options?.skillsDirectory || process.env.SKILLS_DIR || 'skills',
+      },
+    })
     this.options = {
       skillsDirectory: options?.skillsDirectory || process.env.SKILLS_DIR || 'skills',
       maxIntents: options?.maxIntents ?? 5,
       maxHistoryLength: options?.maxHistoryLength ?? 5,
       enableLogging: options?.enableLogging ?? false,
       showThinking: options?.showThinking ?? true,
+      enableScripts: options?.enableScripts ?? true,
     }
   }
 
@@ -125,11 +134,21 @@ export class FileBasedSkillOrchestrator {
    * 注册能力处理器
    *
    * 将 FileBasedSkill 的 execute 方法注册到 SkillExecutor
+   * 同时注册脚本扩展（如果有）
    */
   private registerCapabilityHandlers(): void {
     for (const skill of this.skills) {
       // 为每个能力创建处理器
       for (const capability of skill.capabilities) {
+        // 检查是否有脚本扩展配置
+        const scriptExt = (capability as unknown as { script?: ScriptCapabilityExtension }).script
+
+        // 注册脚本扩展
+        if (scriptExt && this.options.enableScripts) {
+          this.executor.registerScriptExtension(skill.id, capability.name, scriptExt)
+        }
+
+        // 注册代码处理器（作为后备）
         const handler: CapabilityHandler = async (slots, context) => {
           const input: SkillInput = {
             originalQuery: '',

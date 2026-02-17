@@ -46,6 +46,22 @@ export interface CapabilityDefinition {
   readonly slots?: ReadonlyArray<SlotDefinition>
   /** 关键词（用于快速匹配） */
   readonly keywords?: ReadonlyArray<string>
+  /** 脚本扩展配置 */
+  readonly script?: ScriptCapabilityExtension
+}
+
+/**
+ * 脚本能力扩展配置
+ */
+export interface ScriptCapabilityExtension {
+  /** 关联的脚本 ID */
+  readonly scriptId: string
+  /** 输入参数映射（槽位名 -> 脚本参数名） */
+  readonly inputMapping?: Record<string, string>
+  /** 输出格式化模板 */
+  readonly outputTemplate?: string
+  /** 是否将结果传递给 LLM 进行总结 */
+  readonly summarizeWithLlm?: boolean
 }
 
 /**
