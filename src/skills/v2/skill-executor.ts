@@ -183,9 +183,6 @@ export class SkillExecutor {
     }
 
     try {
-      // 确保脚本处理器已初始化
-      await this.scriptHandler.initialize()
-
       return await this.scriptHandler.handle(skillId, capability, slots, extension, context)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
