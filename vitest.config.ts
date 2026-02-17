@@ -13,9 +13,13 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.spec.ts',
         'src/types/**',
+        '**/core/types.ts', // 类型定义文件
         'src/main.ts', // 入口文件
         'src/cli/**', // CLI 交互文件
         'src/llm/providers/**', // 外部 API 提供者
+        '**/dialog/dialog-manager.ts', // 旧版对话管理器（已弃用）
+        '**/query-rewriter.ts', // 暂未使用的功能
+        '**/skills/v2/index.ts', // 仅导出文件
       ],
       thresholds: {
         lines: 80,

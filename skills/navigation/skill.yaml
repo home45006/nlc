@@ -1,0 +1,80 @@
+# 导航控制 Skill 元数据
+id: navigation
+name: 导航控制
+description: 导航功能，包括设置目的地、路线偏好和取消导航
+domain: navigation
+version: "1.0.0"
+priority: 1
+enabled: true
+tags:
+  - navigation
+  - map
+  - route
+
+capabilities:
+  - name: set_destination
+    description: 设置目的地 - 开始导航到指定地点
+    examples:
+      - 导航到国贸
+      - 我要去机场
+      - 带我去天安门
+    slots:
+      - name: destination
+        type: string
+        required: true
+        description: 目的地名称
+      - name: city
+        type: string
+        required: false
+        description: 城市
+    keywords:
+      - 导航
+      - 去
+      - 到
+
+  - name: route_preference
+    description: 路线偏好 - 选择最优路线类型
+    examples:
+      - 走高速
+      - 避开拥堵
+      - 最短路线
+    slots:
+      - name: preference
+        type: enum
+        required: true
+        description: 路线偏好
+        enumValues:
+          - highway
+          - avoid_toll
+          - avoid_traffic
+          - shortest
+          - fastest
+    keywords:
+      - 高速
+      - 拥堵
+      - 路线
+      - 避开
+
+  - name: cancel_navigation
+    description: 取消导航 - 结束当前导航
+    examples:
+      - 取消导航
+      - 结束导航
+      - 停止导航
+    slots: []
+    keywords:
+      - 取消
+      - 结束
+      - 停止
+
+  - name: get_status
+    description: 获取导航状态 - 剩余距离、时间
+    examples:
+      - 还有多远
+      - 还要多久
+      - 现在到哪了
+    slots: []
+    keywords:
+      - 多远
+      - 多久
+      - 到哪

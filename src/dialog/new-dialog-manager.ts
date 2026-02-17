@@ -1,130 +1,154 @@
 /**
- * 对话管理器 (新架构)
+ * 对话管理器 (V2 架构 - FileBasedSkillOrchestrator)
  *
- * 使用大模型作为中枢控制器的对话管理器
- * 数据流：用户输入 → 中枢控制器(落域+改写) → 领域路由 → 领域处理器 → 指令执行
+ * 使用 FileBasedSkillOrchestrator 作为核心处理引擎
+ * 数据流：用户输入 → Orchestrator → Skill 执行 → 指令执行
  */
 
-import type { ChatMessage, DialogOutput, LLMProvider, StateChange } from '../types/index.js'
-import type { DomainType } from '../types/domain.js'
-import type {
-  MultiIntentRouting,
-  DomainRouting,
-  DomainContext,
-  DomainResult,
-  Command,
-} from '../core/types.js'
-import { CentralControllerImpl } from '../controller/central-controller.js'
-import { DomainRouterImpl } from '../controller/domain-router.js'
-import { createAllHandlers } from '../domains/index.js'
+import type { ChatMessage, LLMProvider, StateChange } from '../types/index.js'
+import type { Command } from '../core/types.js'
+import type { OrchestrationResult } from '../skills/v2/file-based-orchestrator.js'
 import { VehicleStateManager } from '../executor/vehicle-state.js'
+import {
+  FileBasedSkillOrchestrator,
+  createFileBasedSkillOrchestrator,
+} from '../skills/index.js'
 
-const MAX_HISTORY_MESSAGES = 60
+// 对话历史最大条数
+const MAX_HISTORY_MESSAGES = 5
 
 export interface DialogResult {
-  readonly output: DialogOutput
+  readonly output: {
+    domain: string
+    intent: string
+    slots: Record<string, unknown>
+    confidence: number
+    ttsText: string
+    hasCommand: boolean
+    meta: {
+      model: string
+      latencyMs: number
+    }
+  }
   readonly stateChanges: ReadonlyArray<StateChange>
-  /** 路由信息（包含改写后的 query） */
-  readonly routings?: ReadonlyArray<DomainRouting>
   /** 原始用户输入 */
   readonly originalInput?: string
+  /** Orchestrator 完整结果 */
+  readonly orchestrationResult?: OrchestrationResult
 }
 
 /**
- * 对话管理器 (新架构)
+ * 对话管理器 (V2 架构)
  */
 export class NewDialogManager {
-  private centralController: CentralControllerImpl
-  private domainRouter: DomainRouterImpl
+  private readonly orchestrator: FileBasedSkillOrchestrator
   private readonly stateManager: VehicleStateManager
   private history: ChatMessage[] = []
   private lastLatencyMs = 0
-  private lastTokens = { prompt: 0, completion: 0 }
+  private initialized = false
 
   constructor(provider: LLMProvider) {
-    this.centralController = new CentralControllerImpl(provider)
-    this.domainRouter = new DomainRouterImpl()
     this.stateManager = new VehicleStateManager()
 
-    // 注册所有领域处理器
-    const handlers = createAllHandlers(provider)
-    handlers.forEach(handler => this.domainRouter.registerHandler(handler))
+    // 创建 FileBasedSkillOrchestrator
+    this.orchestrator = createFileBasedSkillOrchestrator(provider, {
+      enableLogging: false,  // 生产环境关闭详细日志
+      maxHistoryLength: MAX_HISTORY_MESSAGES,
+    })
 
-    console.log('[NewDialogManager] Initialized with domains:',
-      this.domainRouter.getRegisteredDomains().join(', '))
+    console.log('[NewDialogManager] Created with FileBasedSkillOrchestrator')
+  }
+
+  /**
+   * 初始化对话管理器
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return
+    }
+
+    await this.orchestrator.initialize()
+    const skills = this.orchestrator.getSkills()
+
+    console.log('[NewDialogManager] Initialized with skills:', skills.map(s => s.id).join(', '))
+    this.initialized = true
   }
 
   /**
    * 处理用户输入
    */
   async handleInput(userInput: string): Promise<DialogResult> {
+    // 确保已初始化
+    if (!this.initialized) {
+      await this.initialize()
+    }
+
     const startTime = Date.now()
     const vehicleState = this.stateManager.getState()
 
-    // Step 1: 中枢控制器进行落域识别和 Query 改写
-    const routing = await this.centralController.route(userInput, {
+    // 调用 Orchestrator 处理
+    const result = await this.orchestrator.process(userInput, {
       vehicleState,
       dialogHistory: this.history,
     })
 
-    console.log('[NewDialogManager] Routing result:', routing.routings.map(r =>
-      `${r.domain}:${r.confidence.toFixed(2)}`
-    ).join(', '))
+    // 执行指令并收集状态变更
+    const stateChanges = this.executeCommands(result.commands)
 
-    // Step 2: 构建领域上下文
-    const domainContext: DomainContext = {
-      vehicleState,
-      dialogHistory: this.history,
-      previousDomain: this.getLastDomain(),
-    }
-
-    // Step 3: 领域路由分发
-    const domainResults = await this.domainRouter.dispatchAll(routing.routings, domainContext)
-
-    // Step 4: 执行指令
-    const allCommands = this.collectCommands(domainResults)
-    const stateChanges = this.executeCommands(allCommands)
-
-    // Step 5: 生成输出
-    const ttsText = this.generateTtsText(domainResults, stateChanges)
-    const primaryResult = domainResults[0]
-
-    // Step 6: 更新历史
-    this.updateHistory(userInput, routing, domainResults, ttsText)
+    // 更新对话历史
+    this.updateHistory(userInput, result.response)
 
     this.lastLatencyMs = Date.now() - startTime
 
     return {
       output: {
-        domain: routing.routings[0]?.domain || 'chat',
-        intent: primaryResult?.intent || 'unknown',
-        slots: primaryResult?.slots || {},
-        confidence: routing.overallConfidence,
-        ttsText,
-        hasCommand: allCommands.length > 0,
+        domain: this.inferDomain(result),
+        intent: result.intents?.[0]?.capability || result.skillResults[0]?.intent || 'unknown',
+        slots: result.intents?.[0]?.slots || result.skillResults[0]?.slots || {},
+        confidence: result.success ? 0.9 : 0.5,
+        ttsText: result.response,
+        hasCommand: result.commands.length > 0,
         meta: {
-          model: 'multi-stage',
+          model: 'file-based-skill-orchestrator',
           latencyMs: this.lastLatencyMs,
-          tokens: this.lastTokens,
         },
       },
       stateChanges,
-      routings: routing.routings,
       originalInput: userInput,
+      orchestrationResult: result,
     }
   }
 
   /**
-   * 收集所有指令
+   * 推断主要领域
    */
-  private collectCommands(results: ReadonlyArray<DomainResult>): Command[] {
-    const commands: Command[] = []
-    for (const result of results) {
-      if (result.commands) {
-        commands.push(...result.commands)
+  private inferDomain(result: OrchestrationResult): string {
+    // 从识别的意图推断
+    const skillId = result.intents?.[0]?.skillId
+    if (skillId) {
+      return skillId
+    }
+
+    // 从 Skill 结果推断
+    if (result.skillResults.length > 0) {
+      const firstResult = result.skillResults[0]
+      // 通过 commands 推断领域
+      if (firstResult.commands.length > 0) {
+        const cmdType = firstResult.commands[0].type
+        if (cmdType.startsWith('ac_') || cmdType.startsWith('window_') ||
+            cmdType.startsWith('seat_') || cmdType.startsWith('light_')) {
+          return 'vehicle_control'
+        }
+        if (cmdType.startsWith('music_')) {
+          return 'music'
+        }
+        if (cmdType.startsWith('nav_')) {
+          return 'navigation'
+        }
       }
     }
-    return commands
+
+    return 'chat'
   }
 
   /**
@@ -142,55 +166,17 @@ export class NewDialogManager {
   }
 
   /**
-   * 生成 TTS 文本
-   */
-  private generateTtsText(
-    results: ReadonlyArray<DomainResult>,
-    stateChanges: ReadonlyArray<StateChange>
-  ): string {
-    // 优先使用领域处理器返回的 TTS
-    const ttsTexts = results
-      .filter(r => r.ttsText)
-      .map(r => r.ttsText as string)
-
-    if (ttsTexts.length > 0) {
-      return ttsTexts.join('。')
-    }
-
-    // 兜底：基于状态变更生成
-    if (stateChanges.length > 0) {
-      return `好的，${stateChanges.map(c => `${c.field}已调整为${c.to}`).join('，')}。`
-    }
-
-    return '好的'
-  }
-
-  /**
    * 更新对话历史
    */
-  private updateHistory(
-    userInput: string,
-    _routing: MultiIntentRouting,
-    _results: ReadonlyArray<DomainResult>,
-    ttsText: string
-  ): void {
+  private updateHistory(userInput: string, response: string): void {
     // 添加用户输入
     this.history.push({ role: 'user', content: userInput })
 
     // 添加助手回复
-    this.history.push({ role: 'assistant', content: ttsText })
+    this.history.push({ role: 'assistant', content: response })
 
     // 修剪历史
     this.trimHistory()
-  }
-
-  /**
-   * 获取最后一个交互的领域
-   */
-  private getLastDomain(): DomainType | undefined {
-    // 从历史中找最后一个 assistant 消息对应的领域
-    // 简化实现：返回 undefined
-    return undefined
   }
 
   /**
@@ -216,21 +202,6 @@ export class NewDialogManager {
   }
 
   /**
-   * 切换 Provider
-   */
-  switchProvider(provider: LLMProvider): void {
-    // 重新创建中枢控制器
-    this.centralController = new CentralControllerImpl(provider)
-
-    // 重新创建领域路由器并注册处理器
-    this.domainRouter = new DomainRouterImpl()
-    const handlers = createAllHandlers(provider)
-    handlers.forEach(handler => this.domainRouter.registerHandler(handler))
-
-    console.log('[NewDialogManager] Provider switched')
-  }
-
-  /**
    * 获取状态管理器
    */
   getStateManager(): VehicleStateManager {
@@ -238,11 +209,18 @@ export class NewDialogManager {
   }
 
   /**
+   * 获取 Orchestrator
+   */
+  getOrchestrator(): FileBasedSkillOrchestrator {
+    return this.orchestrator
+  }
+
+  /**
    * 修剪历史
    */
   private trimHistory(): void {
-    if (this.history.length > MAX_HISTORY_MESSAGES) {
-      this.history = this.history.slice(-MAX_HISTORY_MESSAGES)
+    if (this.history.length > MAX_HISTORY_MESSAGES * 2) {
+      this.history = this.history.slice(-MAX_HISTORY_MESSAGES * 2)
     }
   }
 }

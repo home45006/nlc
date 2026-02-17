@@ -1,240 +1,243 @@
 # 后端模块
 
-> 更新时间: 2026-02-15
+> 更新时间: 2026-02-17
 
-## 架构变更
+## 架构概述
 
-**重大变更**: 从单一 Function Calling 架构重构为 **大模型中枢控制器架构**。
+**文件系统级 Skills V2 架构**：大模型负责意图识别和执行编排，Skill V2 系统负责能力管理和意图处理。
 
 ```
-旧架构 (已弃用):
-用户输入 → DialogManager → LLMOrchestrator → Function Calling → CommandExecutor
-
-新架构 (当前):
-用户输入 → NewDialogManager → CentralController(落域) → DomainRouter → DomainHandler → DomainModel(小模型) → CommandExecutor
+用户输入 -> NewDialogManager -> FileBasedSkillOrchestrator(意图识别) -> SkillExecutor(执行) -> CommandExecutor
 ```
 
 ## 模块划分
 
-### 1. 核心抽象层 (`src/core/`)
+### 1. Skill V2 系统 (`src/skills/v2/`)
 
 ```
-types.ts              核心类型定义 (226 行)
- ├ DomainRouting      单领域路由结果 { domain, rewrittenQuery, confidence }
- ├ MultiIntentRouting 多意图路由 { routings[], isSequential }
- ├ DomainContext      领域处理上下文 { vehicleState, dialogHistory }
- ├ DomainResult       领域处理结果 { intent, slots, commands, ttsText }
- ├ Command            可执行指令 { type, params, domain, priority }
- ├ IntentResult       意图解析结果 { intent, slots, confidence }
- ├ DomainHandler      领域处理器接口
- ├ DomainModel        领域模型接口
- ├ CentralController  中枢控制器接口
- └ DomainRouter       领域路由器接口
+types.ts              V2 类型定义
+ + SkillMetadataYaml  skill.yaml 元数据结构
+ + CapabilityDefinition 能力定义
+ + SlotDefinition     槽位定义
+ + SkillInstructions  SKILL.md 指令结构
+ + toSkillCapability() 类型转换函数
 
-domain-handler.ts     领域处理器基类 (144 行)
- ├ BaseDomainHandler  抽象基类
- │   ├ createResult()       创建成功结果
- │   ├ createEmptyResult()  创建空结果
- │   └ createCommand()      创建指令
- └ DomainHandlerRegistry    处理器注册表
-     ├ register()           注册处理器
-     ├ registerFactory()    注册工厂
-     └ get()                获取处理器
+yaml-parser.ts        YAML 解析器
+ + parseSimpleYaml()  简易 YAML 解析
+ + parseValue()       值解析
 
-domain-model.ts       领域模型基类 (258 行)
- ├ BaseDomainModel    抽象基类 (调用小模型)
- │   ├ callModel()          调用 LLM
- │   └ createIntentResult() 创建意图结果
- ├ SimpleDomainModel  简单实现 (Prompt + LLM)
- └ RuleBasedDomainModel 规则实现 (无 LLM)
+skill-loader.ts       文件系统加载器
+ + FileBasedSkill     文件系统级 Skill 类
+ + SkillLoader        加载器类
+ +   + loadAllSkills()       加载所有 Skills
+ +   + loadMetadata()        加载 skill.yaml
+ +   + loadInstructions()    加载 SKILL.md
+ +   + loadExamples()        加载示例查询
+ +   + scanSkills()          发现 Skills 目录
+
+file-based-skill-registry.ts  Skill 注册表
+ + FileBasedSkillRegistry
+ +   + scanSkillsDirectory()  扫描目录
+ +   + registerSkill()        注册 Skill
+ +   + getCapabilityDescriptions() 生成能力描述
+ +   + loadInstructions()     延迟加载指令
+ +   + getAllSkills()         获取所有 Skill
+ + 全局单例管理
+
+skill-executor.ts     能力执行器
+ + SkillExecutor
+ +   + registerCapabilityHandler() 注册处理器
+ +   + executeCapability()         执行能力
+ +   + executeMultipleCapabilities() 并行执行
+ +   + validateSlots()             槽位验证
+ + CapabilityHandler    处理器函数类型
+
+file-based-orchestrator.ts  编排器
+ + FileBasedSkillOrchestrator
+ +   + process()             主入口
+ +   + recognizeIntents()    LLM 意图识别
+ +   + executeIntents()      执行意图列表
+ +   + buildIntentRecognitionPrompt() 构建 Prompt
+ + OrchestrationResult  编排结果
+ + OrchestratorContext  执行上下文
 ```
 
-### 2. 控制器层 (`src/controller/`)
+### 2. 通用 Skill 类型 (`src/skills/`)
 
 ```
-central-controller.ts   中枢控制器 (280 行)
- ├ CentralControllerImpl
- │   ├ route()              落域识别 + 多意图拆分 + Query 改写
- │   ├ buildMessages()      构建请求消息
- │   ├ parseResponse()      解析 JSON 响应
- │   ├ validateRouting()    验证路由结果
- │   ├ validateDomain()     验证领域有效性
- │   └ createFallbackRouting() 创建兜底路由
- └ prompts/routing.md       落域 Prompt
+types.ts              Skill 类型定义
+ + SkillCapability    能力描述 { name, description, examples, slots }
+ + CapabilitySlot     槽位定义 { name, type, required, enumValues }
+ + SkillInput         输入 { originalQuery, rewrittenQuery, confidence }
+ + SkillContext       上下文 { vehicleState, dialogHistory }
+ + SkillResult        结果 { success, intent, slots, commands, ttsText }
+ + Skill              接口 { id, name, domain, capabilities, execute }
+ + SkillMetadata      元数据 { version, author, tags, priority }
+ + RecognizedIntent   识别意图 { skillId, capability, confidence }
+ + IntentRecognitionResult 意图识别结果
 
-domain-router.ts        领域路由器 (161 行)
- ├ DomainRouterImpl
- │   ├ registerHandler()    注册处理器
- │   ├ dispatch()           单路由分发
- │   ├ dispatchAll()        批量路由分发 (按优先级排序)
- │   ├ getDomainPriority()  领域优先级 (vehicle > music > nav > chat)
- │   └ isFullyConfigured()  检查完整性
- └ createDomainRouter()     工厂函数
+index.ts              Skill 模块入口
+ + 导出 V2 所有组件
+ + 兼容性别名
 ```
 
-### 3. 对话管理层 (`src/dialog/`)
+### 3. Skills 配置目录 (`skills/`)
 
 ```
-new-dialog-manager.ts   新架构对话管理器 (247 行)
- ├ NewDialogManager
- │   ├ handleInput()        主入口
- │   │   ├ centralController.route()     大模型落域
- │   │   ├ domainRouter.dispatchAll()    领域路由
- │   │   ├ executeCommands()             执行指令
- │   │   └ generateTtsText()             生成 TTS
- │   ├ collectCommands()     收集所有指令
- │   ├ executeCommands()     执行指令
- │   ├ updateHistory()       更新历史
- │   ├ switchProvider()      切换模型
- │   └ getStateManager()     获取状态管理器
-
-dialog-manager.ts       旧架构对话管理器 (203 行, 保留兼容)
- ├ DialogManager
- │   ├ handleInput()        Function Calling 流程
- │   ├ generateTtsFromChanges()  生成 TTS
- │   └ describeAction()     描述动作
+skills/
++-- vehicle_control/
+|   +-- skill.yaml       # 元数据和能力定义
+|   |   + id: vehicle_control
+|   |   + name: 车辆控制
+|   |   + domain: vehicle_control
+|   |   + capabilities:
+|   |   |   + ac_control (空调)
+|   |   |   + window_control (车窗)
+|   |   |   + seat_control (座椅)
+|   |   |   + light_control (灯光)
+|   |   |   + trunk_control (后备箱)
+|   |   + wiper_control (雨刮器)
+|   |   + keywords: [空调, 温度, 车窗, ...]
+|   +-- SKILL.md         # LLM 详细指令
+|   +-- examples/        # 示例文件
+|
++-- music/
+|   +-- skill.yaml
+|   |   + capabilities: play, pause, next, previous, search, volume, mode
+|   +-- SKILL.md
+|   +-- examples/
+|
++-- navigation/
+|   +-- skill.yaml
+|   |   + capabilities: set_destination, set_route_preference, cancel
+|   +-- SKILL.md
+|   +-- examples/
+|
++-- chat/
+    +-- skill.yaml
+    |   + capabilities: free_chat, vehicle_qa, weather_query
+    +-- SKILL.md
+    +-- examples/
 ```
 
-### 4. 领域处理层 (`src/domains/`)
+### 4. 控制器层 (`src/controller/`)
 
 ```
-index.ts                领域模块导出
- └ createAllHandlers()  创建所有处理器工厂
-
-vehicle/                车控领域
- ├ handler.ts           VehicleControlHandler (68 行)
- │   └ handle()         调用 model → 解析指令 → 生成 TTS
- ├ model.ts             VehicleDomainModel (197 行)
- │   └ parseIntent()    小模型意图提取
- ├ intent-parser.ts     parseIntentToCommands, generateTtsText
- └ prompts/vehicle.md   车控 Prompt
-
-music/                  音乐领域
- ├ handler.ts           MusicHandler (65 行)
- ├ model.ts             MusicDomainModel (180 行)
- └ prompts/music.md     音乐 Prompt
-
-navigation/             导航领域
- ├ handler.ts           NavigationHandler (65 行)
- ├ model.ts             NavigationDomainModel (170 行)
- └ prompts/navigation.md 导航 Prompt
-
-chat/                   问答领域
- ├ handler.ts           ChatHandler (60 行)
- ├ model.ts             ChatDomainModel (160 行)
- ├ context-manager.ts   ContextManager (100 行)
- └ prompts/chat.md      问答 Prompt
+central-controller.ts   中枢控制器
+ + CentralControllerImpl
+ +   + route()              落域识别 + 多意图拆分 + Query 改写
+ +   + buildMessages()      构建请求消息
+ +   + parseResponse()      解析 JSON 响应
+ +   + validateRouting()    验证路由结果
+ +   + createFallbackRouting() 创建兜底路由
+ + CentralControllerConfig  配置接口
+ + prompts/routing.md       落域 Prompt (可选加载)
 ```
 
-### 5. 执行层 (`src/executor/`)
+### 5. 对话管理层 (`src/dialog/`)
 
 ```
-command-executor.ts     指令执行器 (23 行)
- └ execute()            遍历 ToolCall → VehicleStateManager.applyCommand()
+new-dialog-manager.ts   对话管理器 (V2 架构)
+ + NewDialogManager
+ +   + handleInput()        主入口
+ +   |   + FileBasedSkillOrchestrator.process()
+ +   |   + executeCommands()             执行指令
+ +   + initialize()          初始化
+ +   + executeCommands()     执行指令
+ +   + updateHistory()       更新历史
+ +   + clearHistory()        清空历史
+ +   + resetState()          重置状态
+ +   + getStateManager()     获取状态管理器
+ +   + getOrchestrator()     获取编排器
+ + MAX_HISTORY_MESSAGES = 5  历史上限
 
-vehicle-state.ts        车辆状态管理 (231 行)
- ├ VehicleStateManager
- │   ├ getState()           获取状态快照
- │   ├ reset()              重置默认值
- │   └ applyCommand()       应用指令 (分发到 handle*)
- │       ├ handleAc()           空调控制
- │       ├ handleWindow()       车窗控制
- │       ├ handleSeat()         座椅控制
- │       ├ handleLight()        灯光控制
- │       ├ handleTrunk()        后备箱控制
- │       ├ handleWiper()        雨刮控制
- │       ├ handleMusic()        音乐控制
- │       └ handleNavigation()   导航控制
+dialog-manager.ts       旧架构对话管理器 (保留兼容)
 ```
 
-### 6. LLM 层 (`src/llm/`)
+### 6. 执行层 (`src/executor/`)
+
+```
+command-executor.ts     指令执行器
+ + execute()            遍历 Command -> VehicleStateManager.applyCommand()
+
+vehicle-state.ts        车辆状态管理
+ + VehicleStateManager
+ +   + getState()           获取状态快照
+ +   + reset()              重置默认值
+ +   + applyCommand()       应用指令
+ +       + handleAc()           空调控制
+ +       + handleWindow()       车窗控制
+ +       + handleSeat()         座椅控制
+ +       + handleLight()        灯光控制
+ +       + handleTrunk()        后备箱控制
+ +       + handleWiper()        雨刮控制
+ +       + handleMusic()        音乐控制
+ +       + handleNavigation()   导航控制
+ + DEFAULT_VEHICLE_STATE   默认状态
+```
+
+### 7. LLM 层 (`src/llm/`)
 
 ```
 providers/
- ├ index.ts             Provider 导出
- ├ gemini.ts            Gemini API 适配 (233 行)
- │   ├ GeminiProvider
- │   │   ├ chat()              调用 Gemini API
- │   │   ├ convertMessages()   消息格式转换
- │   │   ├ convertTools()      工具格式转换
- │   │   └ mergeConsecutiveRoles() 合并连续同角色
- │   └ 配置: gemini-3-flash-preview, temp=0.1-0.3
- │
- └ zhipu.ts             GLM API 适配 (90 行)
-     └ ZhipuProvider.chat()
+ + gemini.ts            Gemini API 适配
+ |   + GeminiProvider
+ |   |   + chat()              调用 Gemini API
+ |   |   + convertMessages()   消息格式转换
+ |   |   + mergeConsecutiveRoles() 合并连续同角色
+ |   + 配置: gemini-3-flash-preview, temp=0.1-0.3
+ |
+ + zhipu.ts             GLM API 适配
+     + ZhipuProvider.chat()
 
-orchestrator.ts         (旧) LLM 编排 (101 行)
-function-registry.ts    (旧) 工具注册表 (70 行)
-functions/              (旧) 工具定义
- ├ vehicle.ts           6 个车控工具
- ├ music.ts             1 个音乐工具
- └ navigation.ts        1 个导航工具
-prompt-builder.ts       (旧) Prompt 构建 (40 行)
-```
+orchestrator.ts         LLM 编排器
+ + LLMOrchestrator
+ +   + process()         处理用户输入
+ +   + callWithFunctions() 调用带工具的请求
 
-### 7. Web 服务层 (`src/web/`)
+function-registry.ts    工具注册表
+ + FunctionRegistry
+ +   + register()        注册工具
+ +   + getFunctions()    获取工具列表
+ +   + execute()         执行工具
 
-```
-server.ts               Fastify 服务器 (115 行)
- ├ createServer()
- │   ├ Fastify 实例 + 日志
- │   ├ CORS 插件
- │   ├ WebSocket 插件
- │   ├ AppContext (单用户模式)
- │   ├ registerApiRoutes()
- │   ├ registerWebSocketRoutes()
- │   ├ 静态文件服务 (web/dist)
- │   └ SPA 回退路由
+prompt-builder.ts       Prompt 构建器
+ + buildSystemPrompt()   构建系统 Prompt
+ + formatVehicleState()  格式化车辆状态
 
-routes/
- ├ api.ts               REST API 路由 (110 行)
- │   ├ GET  /api/state       获取车辆状态
- │   ├ POST /api/state/reset 重置状态
- │   ├ POST /api/dialog      发送对话
- │   ├ GET  /api/history     获取历史
- │   ├ DELETE /api/history   清除历史
- │   ├ POST /api/model       切换模型
- │   ├ GET  /api/model       获取当前模型
- │   └ GET  /api/health      健康检查
- │
- └ ws.ts                WebSocket 路由 (148 行)
-     ├ GET /ws           WebSocket 连接
-     ├ 消息类型:
-     │   ├ dialog        对话消息
-     │   ├ ping          心跳
-     │   └ clear_context 清空上下文
-     └ 响应类型:
-         ├ init          初始状态
-         ├ dialog        对话响应
-         ├ state         状态更新
-         ├ processing    处理中
-         ├ error         错误
-         └ context_cleared 上下文已清空
+intent-rewriter.ts      意图改写器
+ + IntentRewriter
+ +   + rewrite()         改写意图
 ```
 
 ### 8. CLI 层 (`src/cli/`)
 
 ```
-repl.ts                 REPL 交互 (148 行)
- ├ startRepl()          入口函数
- ├ handleCommand()      斜杠命令处理
- │   ├ /help    帮助信息
- │   ├ /state   车辆状态
- │   ├ /model   切换模型
- │   ├ /history 对话历史
- │   ├ /clear   清除历史
- │   ├ /reset   重置状态
- │   ├ /debug   调试信息
- │   └ /quit    退出
- └ createProvider()     Provider 工厂
+repl.ts                 REPL 交互
+ + startRepl()          入口函数
+ + selectModel()        模型选择
+ + handleCommand()      斜杠命令处理
+ |   + /help    帮助信息
+ |   + /state   车辆状态
+ |   + /model   切换模型
+ |   + /history 对话历史
+ |   + /clear   清除历史
+ |   + /reset   重置状态
+ |   + /debug   调试信息
+ |   + /quit    退出
+ + createProvider()     Provider 工厂
 
-renderer.ts             终端输出 (109 行)
- ├ renderBanner()       启动横幅
- ├ renderResult()       结果输出
- ├ renderVehicleState() 车辆状态
- ├ renderHelp()         帮助信息
- ├ renderHistory()      对话历史
- └ renderError()        错误信息
+skill-repl.ts           Skill REPL
+ + startSkillRepl()     V2 Skill 系统测试入口
+
+renderer.ts             终端输出
+ + renderBanner()       启动横幅
+ + renderResult()       结果输出
+ + renderVehicleState() 车辆状态
+ + renderError()        错误信息
+
+rewrite-cli.ts          Query 改写工具
+ + main()               一语多意图改写测试
 ```
 
 ## 外部依赖
@@ -242,56 +245,151 @@ renderer.ts             终端输出 (109 行)
 | 依赖 | 版本 | 用途 | 调用位置 |
 |------|------|------|----------|
 | `dotenv` | ^16.x | 环境变量 | config.ts |
-| `zod` | ^3.x | 类型校验 | (预留) |
-| `fastify` | ^5.x | Web 框架 | web/server.ts |
-| `@fastify/cors` | ^10.x | CORS | web/server.ts |
-| `@fastify/websocket` | ^11.x | WebSocket | web/server.ts |
-| `@fastify/static` | ^8.x | 静态文件 | web/server.ts |
 | `node:readline` | - | CLI 输入 | cli/repl.ts |
-| `node:fs/path` | - | 文件操作 | 多处 |
+| `node:fs/path` | - | 文件操作 | skills/v2/skill-loader.ts |
 
-## API 端点
+## 架构对比
 
-### REST API
+| 方面 | V1 (代码级 Skill) | V2 (文件系统级 Skill) |
+|------|-------------------|----------------------|
+| 配置方式 | TypeScript 代码 | YAML + Markdown 文件 |
+| 加载策略 | 一次性全部加载 | 三层渐进式披露 |
+| Token 消耗 | 高（全部指令） | 低（按需加载） |
+| 扩展性 | 修改代码重新编译 | 添加文件即可 |
+| 可维护性 | 代码耦合 | 配置与逻辑分离 |
+| 测试性 | 需要 Mock | 独立测试配置 |
 
-| 方法 | 路径 | 描述 | 请求体/响应 |
-|------|------|------|-------------|
-| GET | /api/state | 获取车辆状态 | `{ success, data: VehicleState }` |
-| POST | /api/state/reset | 重置状态 | `{ success, message }` |
-| POST | /api/dialog | 发送对话 | `{ message }` → `{ success, data: {...} }` |
-| GET | /api/history | 获取历史 | `{ success, data: ChatMessage[] }` |
-| DELETE | /api/history | 清除历史 | `{ success, message }` |
-| POST | /api/model | 切换模型 | `{ model: "gemini"|"glm" }` |
-| GET | /api/model | 获取模型 | `{ success, data: { model } }` |
-| GET | /api/health | 健康检查 | `{ status, timestamp }` |
+## 三层加载详解
 
-### WebSocket 消息
+### 第一层：skill.yaml（启动时）
 
-**客户端 → 服务器:**
-```typescript
-{ type: 'dialog', payload: { message: string } }
-{ type: 'clear_context' }
-{ type: 'ping' }
+```yaml
+# 元数据，用于意图识别
+id: vehicle_control
+name: 车辆控制
+capabilities:
+  - name: ac_control
+    description: 空调控制
+    examples: [打开空调, 温度调到24度]
+    keywords: [空调, 温度]
 ```
 
-**服务器 → 客户端:**
-```typescript
-{ type: 'init', payload: { vehicleState, history, model } }
-{ type: 'dialog', payload: { ttsText, stateChanges, domain, intent, slots, ... } }
-{ type: 'state', payload: { vehicleState } }
-{ type: 'processing', payload: { message } }
-{ type: 'error', payload: { message } }
-{ type: 'context_cleared', payload: { message } }
-{ type: 'pong' }
+### 第二层：SKILL.md（意图识别后）
+
+```markdown
+# 车辆控制
+
+## ac_control - 空调控制
+
+**参数：**
+| 参数 | 类型 | 必需 | 描述 |
+| action | enum | 是 | turn_on, turn_off, set_temperature |
+| temperature | number | 否 | 16-32 |
+
+**示例：**
+- 打开空调 -> `{ action: "turn_on" }`
 ```
 
-## 新旧架构对比
+### 第三层：能力处理器（执行时）
 
-| 方面 | 旧架构 (Function Calling) | 新架构 (中枢控制器) |
-|------|---------------------------|---------------------|
-| 落域方式 | LLM 直接返回函数调用 | 大模型先落域，小模型再提取 |
-| 多意图 | 单次调用返回多函数 | 拆分为多个 Routing |
-| Query 改写 | 无 | 大模型改写给小模型 |
-| 领域扩展 | 修改 FunctionRegistry | 新增 DomainHandler |
-| 模型选择 | 统一大模型 | 大模型 + 领域小模型 |
-| 可测试性 | 端到端测试 | 分层测试 |
+```typescript
+// 预注册的处理器函数
+executor.registerCapabilityHandler('vehicle_control', 'ac_control', async (slots, context) => {
+  // 实际执行逻辑
+  return { success: true, commands: [...], ttsText: '...' }
+})
+```
+
+## 主要数据流
+
+### 1. 用户输入处理流程
+
+```
+用户输入
+    |
+    v
+NewDialogManager.handleInput()
+    |
+    +-> orchestrator.process(userInput, context)
+    |       |
+    |       +-> recognizeIntents() - LLM 意图识别
+    |       |       |
+    |       |       +-> buildIntentRecognitionPrompt()
+    |       |       +-> provider.chat()
+    |       |       +-> parseIntentResponse()
+    |       |
+    |       +-> executeIntents() - 执行意图
+    |               |
+    |               +-> executor.executeCapability()
+    |               +-> 收集 SkillResult
+    |
+    +-> executeCommands(result.commands)
+    |       |
+    |       +-> VehicleStateManager.applyCommand()
+    |
+    +-> updateHistory()
+    |
+    v
+返回 DialogResult
+```
+
+### 2. Skill 加载流程
+
+```
+启动
+    |
+    v
+FileBasedSkillOrchestrator.initialize()
+    |
+    +-> registry.scanSkillsDirectory()
+    |       |
+    |       +-> loader.scanSkills() - 扫描目录
+    |       +-> loader.loadAllSkills() - 加载元数据
+    |       |       |
+    |       |       +-> loadMetadata() - 解析 skill.yaml
+    |       |       +-> 创建 FileBasedSkill 对象
+    |       |
+    |       +-> registerSkill() - 注册到内存
+    |
+    +-> registerCapabilityHandlers() - 注册处理器
+    |
+    v
+初始化完成
+```
+
+## 错误处理
+
+### 编排器错误处理
+
+```typescript
+// 无意图识别时
+if (!recognitionResult.success || recognitionResult.intents.length === 0) {
+  return this.handleAsChat(userQuery, context)
+}
+
+// 执行失败时
+return {
+  success: false,
+  response: '抱歉，处理您的请求时出现了问题。',
+  skillResults: [],
+  commands: [],
+  error: errorMessage,
+}
+```
+
+### Skill 执行器错误处理
+
+```typescript
+// 能力不存在
+if (!handler) {
+  return this.createErrorResult(
+    `Unknown capability: ${skillId}.${capability}`,
+    'UNKNOWN_CAPABILITY'
+  )
+}
+
+// 执行异常
+catch (error) {
+  return this.createErrorResult(errorMessage, 'EXECUTION_ERROR')
+}
+```

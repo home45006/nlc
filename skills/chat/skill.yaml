@@ -1,0 +1,65 @@
+# 智能问答 Skill 元数据
+id: chat
+name: 智能问答
+description: 通用问答和闲聊功能，包括自由聊天、车辆问答和天气查询
+domain: chat
+version: "1.0.0"
+priority: 10
+enabled: true
+tags:
+  - chat
+  - qa
+  - conversation
+
+capabilities:
+  - name: free_chat
+    description: 自由聊天 - 日常对话和问候
+    examples:
+      - 你好
+      - 今天天气怎么样
+      - 讲个笑话
+    slots:
+      - name: message
+        type: string
+        required: false
+        description: 用户消息内容
+    keywords:
+      - 你好
+      - 谢谢
+      - 再见
+
+  - name: vehicle_qa
+    description: 车辆问答 - 关于车辆功能的问题
+    examples:
+      - 这车油耗多少
+      - 怎么打开自动泊车
+      - 续航里程是多少
+    slots:
+      - name: question
+        type: string
+        required: true
+        description: 用户的问题
+    keywords:
+      - 油耗
+      - 续航
+      - 功能
+
+  - name: weather_query
+    description: 天气查询 - 查询天气情况
+    examples:
+      - 今天天气怎么样
+      - 明天会下雨吗
+      - 北京天气如何
+    slots:
+      - name: city
+        type: string
+        required: false
+        description: 城市名称
+      - name: date
+        type: string
+        required: false
+        description: 日期（今天、明天等）
+    keywords:
+      - 天气
+      - 下雨
+      - 温度

@@ -1,6 +1,6 @@
 export interface ChatMessage {
   readonly role: 'system' | 'user' | 'assistant' | 'tool'
-  readonly content: string
+  readonly content: string | null
   readonly tool_calls?: ReadonlyArray<ToolCall>
   readonly tool_call_id?: string
 }

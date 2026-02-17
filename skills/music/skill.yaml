@@ -1,0 +1,133 @@
+# 音乐控制 Skill 元数据
+id: music
+name: 音乐控制
+description: 控制音乐播放，包括播放暂停、切歌、搜索、音量和播放模式
+domain: music
+version: "1.0.0"
+priority: 1
+enabled: true
+tags:
+  - entertainment
+  - media
+  - audio
+
+capabilities:
+  - name: play_pause
+    description: 播放控制 - 播放、暂停
+    examples:
+      - 播放音乐
+      - 暂停
+      - 继续播放
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - play
+          - pause
+          - resume
+    keywords:
+      - 播放
+      - 暂停
+      - 继续
+
+  - name: next_previous
+    description: 切歌控制 - 上一首、下一首
+    examples:
+      - 下一首
+      - 上一首
+      - 切歌
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - next
+          - previous
+    keywords:
+      - 下一首
+      - 上一首
+      - 切歌
+
+  - name: search_and_play
+    description: 搜索播放 - 根据歌名、歌手搜索并播放
+    examples:
+      - 播放周杰伦的歌
+      - 我想听稻香
+      - 来首轻音乐
+    slots:
+      - name: song
+        type: string
+        required: false
+        description: 歌曲名
+      - name: artist
+        type: string
+        required: false
+        description: 歌手名
+      - name: genre
+        type: enum
+        required: false
+        description: 音乐类型
+        enumValues:
+          - pop
+          - rock
+          - classical
+          - jazz
+          - electronic
+          - folk
+          - r_and_b
+    keywords:
+      - 播放
+      - 听
+      - 搜索
+
+  - name: volume_control
+    description: 音量控制 - 调节音量大小
+    examples:
+      - 调大音量
+      - 音量调到50
+      - 静音
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - increase
+          - decrease
+          - set
+          - mute
+          - unmute
+      - name: volume
+        type: number
+        required: false
+        description: 音量值 (0-100)
+        min: 0
+        max: 100
+    keywords:
+      - 音量
+      - 大声
+      - 小声
+      - 静音
+
+  - name: play_mode
+    description: 播放模式 - 顺序、随机、单曲循环
+    examples:
+      - 随机播放
+      - 单曲循环
+      - 顺序播放
+    slots:
+      - name: mode
+        type: enum
+        required: true
+        description: 播放模式
+        enumValues:
+          - sequential
+          - random
+          - single_loop
+    keywords:
+      - 随机
+      - 循环
+      - 顺序

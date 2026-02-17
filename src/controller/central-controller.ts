@@ -5,6 +5,9 @@
  * 1. 落域识别 - 判断用户输入属于哪个领域
  * 2. 多意图拆分 - 一语多意图的 Query 改写
  * 3. Query 改写 - 使后续小模型能准确处理
+ *
+ * 注意：此控制器用于路由场景。
+ * 主要的 Skill 处理应使用 FileBasedSkillOrchestrator。
  */
 
 import * as fs from 'fs'
@@ -23,14 +26,31 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 /**
+ * 中枢控制器配置
+ */
+export interface CentralControllerConfig {
+  /** LLM Provider */
+  provider: LLMProvider
+}
+
+/**
  * 中枢控制器实现
  */
 export class CentralControllerImpl implements CentralController {
   private readonly provider: LLMProvider
   private readonly systemPrompt: string
 
-  constructor(provider: LLMProvider) {
-    this.provider = provider
+  constructor(provider: LLMProvider)
+  constructor(config: CentralControllerConfig)
+  constructor(providerOrConfig: LLMProvider | CentralControllerConfig) {
+    if ('provider' in providerOrConfig) {
+      // 配置对象模式
+      this.provider = providerOrConfig.provider
+    } else {
+      // 传统参数模式
+      this.provider = providerOrConfig
+    }
+
     this.systemPrompt = this.loadSystemPrompt()
   }
 
@@ -245,6 +265,7 @@ export class CentralControllerImpl implements CentralController {
    * 加载系统 Prompt
    */
   private loadSystemPrompt(): string {
+    // 尝试加载静态文件
     const promptPath = path.join(__dirname, 'prompts', 'routing.md')
     try {
       return fs.readFileSync(promptPath, 'utf-8')

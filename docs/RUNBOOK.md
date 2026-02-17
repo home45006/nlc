@@ -1,6 +1,6 @@
 # 运维手册
 
-> 最后更新: 2026-02-15
+> 最后更新: 2026-02-17
 
 ## 部署流程
 
@@ -14,32 +14,25 @@ npm install
 cp .env.example .env
 # 编辑 .env 填入 GEMINI_API_KEY
 
-# 3. CLI 模式启动
+# 3. 启动 CLI REPL
 npm start
-
-# 4. Web 模式启动
-npm run web
 ```
 
-### 生产环境
+### 环境变量
 
-```bash
-# 1. 构建前端
-cd web && npm install && npm run build && cd ..
-
-# 2. 启动服务（自动服务静态文件）
-npm run web
-```
-
-访问 http://localhost:3000
+| 变量 | 必填 | 说明 | 默认值 |
+|------|------|------|--------|
+| `GEMINI_API_KEY` | 是 | Google Gemini API Key | - |
+| `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
+| `CLAUDE_API_KEY` | 否 | Claude API Key（未实现） | - |
+| `DEFAULT_MODEL` | 否 | 默认模型选择 | `gemini` |
+| `SKILLS_DIR` | 否 | Skills 目录路径 | `skills` |
 
 ### 端口说明
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | CLI REPL | - | 终端交互 |
-| Web Server | 3000 | HTTP + WebSocket |
-| 前端开发 | 5173 | Vite 开发服务器 |
 
 ## 启动与停止
 
@@ -49,24 +42,15 @@ npm run web
 # 启动
 npm start
 
+# 开发模式（热重载）
+npm run dev
+
+# Skill REPL 模式
+npm run skill
+
 # 退出 REPL
 /quit
 # 或 Ctrl+D / Ctrl+C
-```
-
-### Web 模式
-
-```bash
-# 启动
-npm run web
-
-# 后台运行（生产环境）
-nohup npm run web > logs/server.log 2>&1 &
-
-# 停止
-# 找到进程并 kill
-lsof -i :3000
-kill <PID>
 ```
 
 ## REPL 命令
@@ -99,21 +83,8 @@ kill <PID>
 ### 健康检查
 
 ```bash
-# 检查 Web 服务是否运行
-curl http://localhost:3000/api/health
-
-# 检查 WebSocket 连接
-wscat -c ws://localhost:3000/ws
-```
-
-### 日志查看
-
-```bash
-# 实时日志（如果使用 nohup）
-tail -f logs/server.log
-
-# 查看最近 100 行
-tail -n 100 logs/server.log
+# 运行冒烟测试验证系统
+npm run test:smoke
 ```
 
 ### 性能指标
@@ -188,19 +159,21 @@ user → assistant(functionCall only) → tool(result) → assistant(text确认)
 
 **解决**: 充值智谱账户或切换到 Gemini（`/model gemini`）
 
-### 8. WebSocket 连接失败
+### 8. Skill V2 系统问题
 
 **排查步骤**:
-1. 确认服务已启动: `lsof -i :3000`
-2. 检查防火墙设置
-3. 查看服务端日志
+1. 检查 `skills/` 目录结构是否正确
+2. 验证 `skill.yaml` 格式是否有效
+3. 查看启动日志中的 Skill 加载信息
+4. 使用 `npm run skill` 测试 Skill REPL
 
-### 9. 前端页面空白
+**常见错误**:
 
-**排查步骤**:
-1. 确认前端已构建: `cd web && npm run build`
-2. 检查浏览器控制台错误
-3. 确认 API 端点配置正确
+| 错误 | 原因 | 解决 |
+|------|------|------|
+| `Skill not found` | Skill ID 不存在 | 检查 `skill.yaml` 中的 `id` |
+| `Invalid YAML` | YAML 格式错误 | 使用 YAML 验证器检查 |
+| `Capability not registered` | 能力处理器未注册 | 在 `SkillExecutor` 中注册 |
 
 ## 验证测试
 
@@ -208,11 +181,15 @@ user → assistant(functionCall only) → tool(result) → assistant(text确认)
 # 快速验证 API 连通性（5 条用例）
 npm run test:smoke
 
-# 完整端到端验证（17 条用例）
-npm run test:e2e
-```
+# Skill 系统演示
+npm run skill:demo
 
-期望结果: 17/17 通过（100%）
+# 完整单元测试
+npm test
+
+# 覆盖率报告
+npm run test:coverage
+```
 
 ## 状态重置
 
@@ -223,7 +200,6 @@ npm run test:e2e
 | REPL 中输入 `/reset` | 重置车辆状态和对话历史 |
 | REPL 中输入 `/clear` | 仅清除对话历史 |
 | 重启进程 | 完全重置 |
-| Web 模式刷新页面 | 重载历史（localStorage） |
 
 ## 回滚流程
 
@@ -239,8 +215,8 @@ git reset --hard <commit-hash>
 # 重新安装依赖（如有变化）
 npm install
 
-# 重启服务
-npm run web
+# 重启 REPL
+npm start
 ```
 
 ### 配置回滚
@@ -252,31 +228,63 @@ cp .env.example .env.backup
 # 手动恢复 API Key
 ```
 
+### Skill 配置回滚
+
+如果某个 Skill 配置有问题：
+
+```bash
+# 临时禁用 Skill
+# 编辑 skills/my_skill/skill.yaml
+# 设置 enabled: false
+```
+
 ## 依赖版本
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
-| fastify | ^5.7.4 | Web 框架 |
-| @fastify/cors | ^11.2.0 | CORS 支持 |
-| @fastify/static | ^9.0.0 | 静态文件服务 |
-| @fastify/websocket | ^11.2.0 | WebSocket 支持 |
 | dotenv | ^16.4.7 | 环境变量加载 |
-| pino-pretty | ^13.1.3 | 日志格式化 |
 | typescript | ^5.7.0 | 类型检查 |
 | tsx | ^4.19.0 | TypeScript 直接运行 |
 | vitest | ^1.6.0 | 测试框架 |
+| @vitest/coverage-v8 | ^1.6.0 | 覆盖率报告 |
+| @types/node | ^22.10.0 | Node.js 类型 |
 
 **无外部基础设施依赖**（无数据库、无 Redis、无 Docker）。
+
+## 架构变更记录
+
+### 2026-02-17
+
+- 实现文件系统级 Skills V2 架构
+- 新增 `skills/` 目录存放 Skill 配置
+- 新增 `src/skills/v2/` 模块：
+  - `file-based-orchestrator.ts` - 编排器
+  - `file-based-skill-registry.ts` - 注册表
+  - `skill-executor.ts` - 执行器
+  - `skill-loader.ts` - 加载器
+  - `yaml-parser.ts` - YAML 解析器
+- 支持三层渐进式披露加载策略
+- 删除旧的代码级 Skill 实现（`src/skills/skills/`）
+
+### 2026-02-16
+
+- 删除 Web 模式和前端（`web/` 目录）
+- 删除 `src/web/` 服务端代码
+- 新增 Skill 系统（`src/skills/`）
+- 清理未使用代码：
+  - `src/core/domain-model.ts`
+  - `src/core/index.ts`
+  - `src/llm/providers/index.ts`
+  - `src/controller/index.ts`
 
 ## 紧急联系
 
 如遇严重问题：
-1. 保存日志: `tail -n 1000 logs/server.log > incident.log`
+1. 保存 REPL 输出日志
 2. 记录错误信息和复现步骤
 3. 联系开发团队
 
 ## 相关文档
 
-- [开发指南](/Users/zhangdawei/david/github/nlc/docs/CONTRIB.md)
-- [架构总览](/Users/zhangdawei/david/github/nlc/codemaps/architecture.md)
-- [系统设计](/Users/zhangdawei/david/github/nlc/docs/system-design.md)
+- [开发指南](./CONTRIB.md)
+- [架构总览](../codemaps/architecture.md)

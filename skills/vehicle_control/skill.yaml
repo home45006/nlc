@@ -1,0 +1,223 @@
+# 车辆控制 Skill 元数据
+id: vehicle_control
+name: 车辆控制
+description: 控制车辆各项功能，包括空调、车窗、座椅、灯光、后备箱和雨刮器
+domain: vehicle_control
+version: "1.0.0"
+priority: 1
+enabled: true
+tags:
+  - vehicle
+  - control
+  - hardware
+
+capabilities:
+  - name: ac_control
+    description: 空调控制 - 开关、温度、模式、风速
+    examples:
+      - 打开空调
+      - 关闭空调
+      - 把温度调到24度
+      - 开启制冷模式
+      - 风速调到2档
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - turn_on
+          - turn_off
+          - set_temperature
+          - set_mode
+          - set_fan_speed
+      - name: temperature
+        type: number
+        required: false
+        description: 目标温度 (16-32度)
+        min: 16
+        max: 32
+      - name: mode
+        type: enum
+        required: false
+        description: 空调模式
+        enumValues:
+          - cool
+          - heat
+          - auto
+          - vent
+      - name: fan_speed
+        type: number
+        required: false
+        description: 风速档位 (1-7档)
+        min: 1
+        max: 7
+    keywords:
+      - 空调
+      - 温度
+      - 冷气
+      - 暖气
+      - 风速
+
+  - name: window_control
+    description: 车窗控制 - 开关、位置调节
+    examples:
+      - 打开车窗
+      - 关闭副驾车窗
+      - 把左后车窗开一半
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - open
+          - close
+          - set_position
+      - name: position
+        type: enum
+        required: false
+        description: 车窗位置
+        enumValues:
+          - front_left
+          - front_right
+          - rear_left
+          - rear_right
+          - all
+      - name: percentage
+        type: number
+        required: false
+        description: 开度百分比 (0-100)
+        min: 0
+        max: 100
+    keywords:
+      - 车窗
+      - 窗户
+
+  - name: seat_control
+    description: 座椅控制 - 加热、通风
+    examples:
+      - 打开座椅加热
+      - 副驾座椅通风
+      - 座椅加热调到2档
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - heating_on
+          - heating_off
+          - ventilation_on
+          - ventilation_off
+          - set_level
+      - name: seat
+        type: enum
+        required: false
+        description: 座椅位置
+        enumValues:
+          - driver
+          - passenger
+          - rear_left
+          - rear_right
+      - name: level
+        type: number
+        required: false
+        description: 档位 (1-3档)
+        min: 1
+        max: 3
+      - name: feature
+        type: enum
+        required: false
+        description: 功能类型
+        enumValues:
+          - heating
+          - ventilation
+    keywords:
+      - 座椅
+      - 加热
+      - 通风
+
+  - name: light_control
+    description: 灯光控制 - 氛围灯、阅读灯
+    examples:
+      - 打开氛围灯
+      - 关闭阅读灯
+      - 把氛围灯调成蓝色
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - turn_on
+          - turn_off
+          - set_color
+          - set_brightness
+      - name: light_type
+        type: enum
+        required: false
+        description: 灯光类型
+        enumValues:
+          - ambient
+          - reading
+          - headlight
+      - name: color
+        type: string
+        required: false
+        description: 颜色名称
+      - name: brightness
+        type: number
+        required: false
+        description: 亮度 (0-100)
+        min: 0
+        max: 100
+    keywords:
+      - 灯
+      - 氛围灯
+      - 阅读灯
+
+  - name: trunk_control
+    description: 后备箱控制 - 开关
+    examples:
+      - 打开后备箱
+      - 关闭后备箱
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - open
+          - close
+    keywords:
+      - 后备箱
+      - 尾箱
+
+  - name: wiper_control
+    description: 雨刮器控制 - 开关、速度
+    examples:
+      - 打开雨刮器
+      - 关闭雨刮
+      - 雨刮调到高速
+    slots:
+      - name: action
+        type: enum
+        required: true
+        description: 操作类型
+        enumValues:
+          - turn_on
+          - turn_off
+          - set_speed
+      - name: speed
+        type: enum
+        required: false
+        description: 速度档位
+        enumValues:
+          - low
+          - medium
+          - high
+          - auto
+    keywords:
+      - 雨刮
+      - 雨刷

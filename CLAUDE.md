@@ -8,55 +8,96 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 开发
 npm start              # CLI REPL 模式
 npm run dev            # CLI 开发模式（热重载）
-npm run web            # Web 服务器模式（端口 3000）
-npm run web:dev        # Web 开发模式（热重载）
+npm run skill          # Skill REPL 模式（V2 文件系统级 Skills）
+npm run skill:demo     # Skill 系统演示
+npm run rewrite        # 一语多意图改写工具
 
 # 测试
 npm test               # 运行单元测试
 npm run test:watch     # 监听模式
 npm run test:coverage  # 覆盖率报告（阈值 80%）
 npm run test:smoke     # 冒烟测试（需要 API Key）
-npm run test:e2e       # E2E 测试（需要 API Key）
-
-# 前端
-cd web && npm run dev  # 前端开发服务器（端口 5173）
 ```
 
 ## 核心架构
 
-这是一个智能座舱自然语言控制系统 Demo，使用 **Function Calling** 架构将自然语言映射为结构化车辆控制指令。
+这是一个智能座舱自然语言控制系统 Demo，使用 **文件系统级 Skills V2 架构** 将自然语言映射为结构化车辆控制指令。
 
 ### 数据流
 
 ```
-用户输入 → DialogManager → LLMOrchestrator → LLM Provider
-                              ↓
-                         Function Calling
-                              ↓
-                     FunctionRegistry.resolve()
-                              ↓
-                       CommandExecutor
-                              ↓
-                     VehicleStateManager
-                              ↓
-                         状态变更 + TTS
+用户输入 → NewDialogManager → FileBasedSkillOrchestrator
+                                      ↓
+                              LLM 意图识别
+                                      ↓
+                              SkillExecutor
+                                      ↓
+                              能力处理器执行
+                                      ↓
+                              CommandExecutor
+                                      ↓
+                              VehicleStateManager
+                                      ↓
+                              状态变更 + TTS
 ```
 
 ### 核心模块
 
 | 模块 | 职责 | 文件位置 |
 |------|------|----------|
-| DialogManager | 统一管理用户输入处理流程，维护对话历史（最多60条） | `src/dialog/dialog-manager.ts` |
-| LLMOrchestrator | 构建 Prompt、调用 LLM、解析响应 | `src/llm/orchestrator.ts` |
-| FunctionRegistry | 管理所有控制函数，将函数名映射到 Domain/Intent | `src/llm/function-registry.ts` |
-| CommandExecutor | 执行 LLM 返回的指令（纯函数式设计） | `src/executor/command-executor.ts` |
+| NewDialogManager | 统一管理用户输入处理流程，维护对话历史（最多60条） | `src/dialog/new-dialog-manager.ts` |
+| CentralControllerImpl | 大模型落域识别、多意图拆分、Query改写 | `src/controller/central-controller.ts` |
+| CommandExecutor | 执行指令（纯函数式设计） | `src/executor/command-executor.ts` |
 | VehicleStateManager | 管理车辆状态（不可变状态设计） | `src/executor/vehicle-state.ts` |
 
-### 函数分类
+### Skill V2 系统（文件系统级）
 
-- `vehicleFunctions`: 车辆控制（空调、车窗、座椅、灯光、后备箱、雨刮器）
-- `musicFunctions`: 音乐控制（播放、暂停、切歌、搜索、音量、模式）
-- `navigationFunctions`: 导航控制（目的地、路线偏好、取消）
+基于 YAML 配置的 Skills，支持渐进式披露（三层加载）：
+
+| 模块 | 职责 | 文件位置 |
+|------|------|----------|
+| FileBasedSkillOrchestrator | Skill 编排器，LLM 意图识别和执行 | `src/skills/v2/file-based-orchestrator.ts` |
+| FileBasedSkillRegistry | Skill 注册和元数据管理 | `src/skills/v2/file-based-skill-registry.ts` |
+| SkillExecutor | 能力执行器，处理器注册 | `src/skills/v2/skill-executor.ts` |
+| SkillLoader | 从文件系统加载 Skills | `src/skills/v2/skill-loader.ts` |
+| yaml-parser | 解析 skill.yaml 配置 | `src/skills/v2/yaml-parser.ts` |
+
+### Skills 目录结构
+
+```
+skills/
+├── vehicle_control/
+│   ├── skill.yaml       # 元数据和能力定义
+│   ├── SKILL.md         # LLM 指令（延迟加载）
+│   └── examples/        # 示例文件
+├── music/
+│   ├── skill.yaml
+│   ├── SKILL.md
+│   └── examples/
+├── navigation/
+│   ├── skill.yaml
+│   ├── SKILL.md
+│   └── examples/
+└── chat/
+    ├── skill.yaml
+    ├── SKILL.md
+    └── examples/
+```
+
+### 三层加载策略
+
+| 层级 | 文件 | 加载时机 | 用途 |
+|------|------|----------|------|
+| 第一层 | skill.yaml | 启动时 | 元数据和能力定义（~50 tokens/skill） |
+| 第二层 | SKILL.md | 意图识别后 | LLM 指令（~500 tokens/skill） |
+| 第三层 | 能力处理器 | 执行时 | 实际执行逻辑 |
+
+### 领域分类
+
+- `vehicle_control`: 车辆控制（空调、车窗、座椅、灯光、后备箱、雨刮器）
+- `music`: 音乐控制（播放、暂停、切歌、搜索、音量、模式）
+- `navigation`: 导航控制（目的地、路线偏好、取消）
+- `chat`: 智能问答（闲聊、车辆问答、天气查询）
 
 ### LLM Provider
 
@@ -81,22 +122,60 @@ const newState = {
 }
 ```
 
-### 新增控制功能
+### 新增 Skill（V2 文件系统级）
 
-1. 在 `src/llm/functions/` 中定义新的 Function
-2. 在 `FunctionRegistry` 中注册函数
-3. 在 `CommandExecutor` 中添加执行逻辑
-4. 在 `VehicleStateManager` 中添加状态定义
-5. 编写单元测试
+1. 在 `skills/` 目录下创建新文件夹（如 `skills/my_skill/`）
+2. 创建 `skill.yaml` 文件，定义元数据和能力：
+   ```yaml
+   id: my_skill
+   name: 我的技能
+   description: 技能描述
+   domain: my_domain
+   version: "1.0.0"
+   priority: 100
+   enabled: true
+   tags:
+     - tag1
+     - tag2
+
+   capabilities:
+     - name: my_capability
+       description: 能力描述
+       examples:
+         - 示例1
+         - 示例2
+       slots:
+         - name: param1
+           type: string
+           required: true
+           description: 参数描述
+       keywords:
+         - 关键词1
+         - 关键词2
+   ```
+3. 创建 `SKILL.md` 文件，提供 LLM 指令（详细的能力说明和参数示例）
+4. 创建 `examples/` 目录存放示例文件
+5. 在 `SkillExecutor` 中注册能力处理器
+6. 编写单元测试
 
 ### 环境变量
 
 必需配置在 `.env` 文件中：
-- `GEMINI_API_KEY`: Google Gemini API Key
-- `ZHIPU_API_KEY`: 智谱 GLM API Key（可选）
-- `DEFAULT_MODEL`: 默认模型（gemini / glm）
 
-## 双模式运行
+| 变量 | 必填 | 说明 | 默认值 |
+|------|------|------|--------|
+| `GEMINI_API_KEY` | 是 | Google Gemini API Key | - |
+| `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
+| `CLAUDE_API_KEY` | 否 | Claude API Key（未实现） | - |
+| `DEFAULT_MODEL` | 否 | 默认模型选择 | `gemini` |
 
-- **CLI 模式** (`npm start`): REPL 交互式命令行，适合快速测试
-- **Web 模式** (`npm run web`): HTTP + WebSocket 服务，配合 Vue 前端使用
+## 运行模式
+
+- **CLI 模式** (`npm start`): REPL 交互式命令行，适合快速测试和开发
+- **Skill REPL** (`npm run skill`): V2 Skill 系统独立测试
+
+## 相关文档
+
+- [开发指南](docs/CONTRIB.md)
+- [运维手册](docs/RUNBOOK.md)
+- [架构总览](codemaps/architecture.md)
