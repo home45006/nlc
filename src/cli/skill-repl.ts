@@ -9,26 +9,21 @@ import { config } from '../config.js'
 import { GeminiProvider } from '../llm/providers/gemini.js'
 import { ZhipuProvider } from '../llm/providers/zhipu.js'
 import type { LLMProvider, ChatMessage } from '../types/llm.js'
-import { createDefaultVehicleState, type VehicleState } from '../types/vehicle.js'
 import type { Command } from '../core/types.js'
-import {
-  FileBasedSkillOrchestrator,
-  createFileBasedSkillOrchestrator,
-} from '../skills/index.js'
+import type { Skill } from '../skills/types.js'
+import { Domain } from '../types/domain.js'
+import { createFileBasedSkillOrchestrator } from '../skills/index.js'
 import { VehicleStateManager } from '../executor/vehicle-state.js'
-
-// ANSI 颜色代码
-const COLORS = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  dim: '\x1b[2m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-  red: '\x1b[31m',
-}
+import {
+  renderBanner,
+  renderResult,
+  renderError,
+  renderVehicleState,
+  renderHelp,
+  renderHistory,
+  renderVerboseResult,
+  type VerboseResult,
+} from './renderer.js'
 
 type ModelName = 'gemini' | 'glm'
 
@@ -53,135 +48,63 @@ function createProvider(model: ModelName): LLMProvider {
   throw new Error(`不支持的模型: ${model}`)
 }
 
-function renderBanner(): void {
-  console.log('')
-  console.log(COLORS.bright + COLORS.cyan + '╔═══════════════════════════════════════════════════════════════╗' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '     Skill Orchestrator V2 - 文件系统级 Skills 演示              ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '╠═══════════════════════════════════════════════════════════════╣' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '  命令:                                                        ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /help      - 显示帮助                                      ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /state     - 查看车辆状态                                   ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /history   - 查看对话历史                                   ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /skills    - 查看已加载 Skills                              ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /model     - 切换模型                                       ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /reset     - 重置车辆状态和对话历史                         ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    /quit      - 退出                                           ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '                                                               ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '  示例输入:                                                    ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    "打开空调，温度调到24度"                                    ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    "播放周杰伦的歌"                                           ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    "导航去机场"                                               ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '║' + COLORS.reset + '    "打开车窗并播放音乐" (多意图并行)                           ' + COLORS.bright + COLORS.cyan + '║' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '╚═══════════════════════════════════════════════════════════════╝' + COLORS.reset)
-  console.log('')
-}
+/** 有效的领域类型 */
+const VALID_DOMAINS = Object.values(Domain) as string[]
 
-function renderHelp(): void {
-  console.log('')
-  console.log(COLORS.yellow + '命令列表:' + COLORS.reset)
-  console.log('  /help      - 显示此帮助')
-  console.log('  /state     - 查看当前车辆状态')
-  console.log('  /history   - 查看对话历史')
-  console.log('  /skills    - 查看已加载 Skills')
-  console.log('  /model     - 切换模型 (gemini/glm)')
-  console.log('  /reset     - 重置车辆状态和对话历史')
-  console.log('  /quit      - 退出程序')
-  console.log('')
-  console.log(COLORS.yellow + '示例输入:' + COLORS.reset)
-  console.log('  "打开空调"')
-  console.log('  "温度调到24度"')
-  console.log('  "打开车窗"')
-  console.log('  "播放周杰伦的歌"')
-  console.log('  "导航去国贸"')
-  console.log('  "打开空调，温度24度，然后播放音乐"  (多意图并行)')
-  console.log('')
-}
-
-function renderState(state: VehicleState): void {
-  console.log('')
-  console.log(COLORS.cyan + '┌─────────────────────────────────────────────────────────────┐' + COLORS.reset)
-  console.log(COLORS.cyan + '│ Vehicle State' + COLORS.reset)
-  console.log(COLORS.cyan + '├─────────────────────────────────────────────────────────────┤' + COLORS.reset)
-  console.log(`  AC: ${state.ac.isOn ? COLORS.green + 'ON' : COLORS.red + 'OFF'}${COLORS.reset} | Temp: ${state.ac.temperature}C | Fan: ${state.ac.fanSpeed} | Mode: ${state.ac.mode}`)
-  console.log(`  Windows: FL${state.windows.frontLeft}% FR${state.windows.frontRight}% RL${state.windows.rearLeft}% RR${state.windows.rearRight}%`)
-  console.log(`  Seats: Driver Heat${state.seats.driverHeating} Vent${state.seats.driverVentilation} | Passenger Heat${state.seats.passengerHeating} Vent${state.seats.passengerVentilation}`)
-  console.log(`  Lights: Ambient${state.lights.ambientOn ? COLORS.green + 'ON' : COLORS.dim + 'OFF'}${COLORS.reset}(${state.lights.ambientColor}) | Reading${state.lights.readingOn ? COLORS.green + 'ON' : COLORS.dim + 'OFF'}${COLORS.reset}`)
-  console.log(`  Trunk: ${state.trunk.isOpen ? COLORS.yellow + 'OPEN' : COLORS.dim + 'CLOSED'}${COLORS.reset} | Wiper: ${state.wiper.isOn ? 'ON(' + state.wiper.speed + ')' : 'OFF'}`)
-  console.log(`  Music: ${state.music.isPlaying ? COLORS.green + 'PLAYING' : COLORS.dim + 'PAUSED'}${COLORS.reset} | ${state.music.track || 'None'} | Vol: ${state.music.volume}% | Mode: ${state.music.mode}`)
-  console.log(`  Nav: ${state.navigation.isActive ? COLORS.green + 'NAVIGATING -> ' + state.navigation.destination : COLORS.dim + 'INACTIVE'}${COLORS.reset} | Pref: ${state.navigation.routePreference}`)
-  console.log(`  Battery: ${state.battery.level}% | Range: ${state.battery.rangeKm}km`)
-  console.log(COLORS.cyan + '└─────────────────────────────────────────────────────────────┘' + COLORS.reset)
-  console.log('')
-}
-
-function renderHistory(history: ChatMessage[]): void {
-  console.log('')
-  console.log(COLORS.cyan + '┌─────────────────────────────────────────────────────────────┐' + COLORS.reset)
-  console.log(COLORS.cyan + '| Dialog History (Last ' + history.length + ' messages)' + COLORS.reset)
-  console.log(COLORS.cyan + '├─────────────────────────────────────────────────────────────┤' + COLORS.reset)
-
-  if (history.length === 0) {
-    console.log('  (No history)')
-  } else {
-    for (let i = 0; i < history.length; i++) {
-      const msg = history[i]
-      const roleIcon = msg.role === 'user' ? 'User' : 'Bot'
-      const roleColor = msg.role === 'user' ? COLORS.green : COLORS.blue
-      const content = msg.content.length > 60 ? msg.content.slice(0, 60) + '...' : msg.content
-      console.log(`  ${roleIcon} ${roleColor}${content}${COLORS.reset}`)
-    }
+/**
+ * 将字符串安全地转换为 DomainType
+ */
+function normalizeDomain(domain: string): typeof Domain[keyof typeof Domain] {
+  if (VALID_DOMAINS.includes(domain)) {
+    return domain as typeof Domain[keyof typeof Domain]
   }
-
-  console.log(COLORS.cyan + '└─────────────────────────────────────────────────────────────┘' + COLORS.reset)
-  console.log('')
+  return Domain.CHAT
 }
 
-function renderSkills(skills: { id: string; name: string; capabilities: { name: string }[] }[]): void {
+/** 渲染已加载的 Skills 列表 */
+function renderSkills(skills: Skill[]): void {
   console.log('')
-  console.log(COLORS.cyan + '┌─────────────────────────────────────────────────────────────┐' + COLORS.reset)
-  console.log(COLORS.cyan + '| Loaded Skills (' + skills.length + ')' + COLORS.reset)
-  console.log(COLORS.cyan + '├─────────────────────────────────────────────────────────────┤' + COLORS.reset)
-
+  console.log('───────── 已加载 Skills ─────────')
   for (const skill of skills) {
-    console.log(`  ${COLORS.yellow}${skill.name}${COLORS.reset} (${skill.id})`)
-    console.log(`    Capabilities: ${skill.capabilities.map(c => c.name).join(', ')}`)
+    console.log(`  ${skill.name} (${skill.id})`)
+    console.log(`    能力: ${skill.capabilities.map(c => c.name).join(', ')}`)
   }
-
-  console.log(COLORS.cyan + '└─────────────────────────────────────────────────────────────┘' + COLORS.reset)
+  console.log('────────────────────────────')
   console.log('')
 }
 
 async function selectModel(rl: ReturnType<typeof createInterface>): Promise<ModelName> {
   return new Promise((resolve) => {
-    // 显示模型选择
-    process.stdout.write('\n')
-    process.stdout.write('+-----------------------------+\n')
-    process.stdout.write('|      Select Model           |\n')
-    process.stdout.write('+-----------------------------+\n')
+    console.log('')
+    console.log('┌─────────────────────────────────┐')
+    console.log('│      请选择要使用的模型          │')
+    console.log('├─────────────────────────────────┤')
     if (config.geminiApiKey) {
-      process.stdout.write('|  1. Gemini (Recommended)    |\n')
+      console.log('│  1. Gemini 3 Flash              │')
     }
     if (config.zhipuApiKey) {
-      process.stdout.write('|  2. GLM-4 (Zhipu)           |\n')
+      console.log('│  2. GLM-4-Flash (智谱)          │')
     }
-    process.stdout.write('+-----------------------------+\n')
-    process.stdout.write('\n')
+    console.log('├─────────────────────────────────┤')
+    console.log(`│  直接回车使用默认: ${config.defaultModel}`)
+    console.log('└─────────────────────────────────┘')
+    console.log('')
 
-    rl.question('Select [1/2, Enter for default]: ', (input) => {
+    rl.question('选择 [1/2]: ', (input) => {
       const trimmed = input.trim()
+
+      if (!trimmed) {
+        resolve(config.defaultModel as ModelName)
+        return
+      }
+
       if (trimmed === '1' && config.geminiApiKey) {
         resolve('gemini')
       } else if (trimmed === '2' && config.zhipuApiKey) {
         resolve('glm')
-      } else if (config.geminiApiKey) {
-        console.log('  Using default: Gemini\n')
-        resolve('gemini')
-      } else if (config.zhipuApiKey) {
-        console.log('  Using default: GLM\n')
-        resolve('glm')
       } else {
-        console.log(COLORS.red + 'Error: No API Key configured' + COLORS.reset)
-        process.exit(1)
+        console.log(`\n  使用默认模型: ${config.defaultModel}\n`)
+        resolve(config.defaultModel as ModelName)
       }
     })
   })
@@ -200,31 +123,18 @@ function applyCommandsToState(
 }
 
 export async function startSkillRepl(): Promise<void> {
-  // 确保输出不被缓冲
-  if (process.stdout.isTTY) {
-    process.stdout.setDefaultEncoding?.('utf8')
-  }
-
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    terminal: true,
   })
-
-  // 显示欢迎信息
-  console.log('')
-  console.log(COLORS.bright + COLORS.cyan + '+---------------------------------------------------------------+' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '|' + COLORS.reset + '     Skill Orchestrator V2 - File-based Skills Demo              ' + COLORS.bright + COLORS.cyan + '|' + COLORS.reset)
-  console.log(COLORS.bright + COLORS.cyan + '+---------------------------------------------------------------+' + COLORS.reset)
-  console.log('')
 
   // 选择模型
   const selectedModel = await selectModel(rl)
   const provider = createProvider(selectedModel)
 
-  // 创建 FileBasedSkillOrchestrator（启用详细日志）
+  // 创建 FileBasedSkillOrchestrator
   const orchestrator = createFileBasedSkillOrchestrator(provider, {
-    enableLogging: true,
+    enableLogging: false,
     maxHistoryLength: MAX_HISTORY,
   })
 
@@ -238,14 +148,15 @@ export async function startSkillRepl(): Promise<void> {
   // 对话历史
   const dialogHistory: ChatMessage[] = []
 
-  renderBanner()
-  console.log(COLORS.green + `* Connected to ${provider.name}` + COLORS.reset)
-  console.log(COLORS.dim + `* Loaded ${skills.length} skills from file system` + COLORS.reset)
-  console.log(COLORS.dim + `* Dialog history: last ${MAX_HISTORY} turns` + COLORS.reset)
+  // 模式开关
+  let verboseMode = false
+
+  renderBanner(provider.name)
+  console.log(`  已加载 ${skills.length} 个 Skills | 输入 /help 查看帮助`)
   console.log('')
 
   const prompt = (): void => {
-    rl.question(COLORS.bright + 'You> ' + COLORS.reset, async (input) => {
+    rl.question('你> ', async (input) => {
       const trimmed = input.trim()
 
       if (!trimmed) {
@@ -261,20 +172,24 @@ export async function startSkillRepl(): Promise<void> {
       }
 
       try {
+        const totalStartTime = Date.now()
+
         // 获取当前车辆状态
         const vehicleState = stateManager.getState()
 
         // 调用 Orchestrator
         const result = await orchestrator.process(trimmed, {
           vehicleState,
-          dialogHistory: [...dialogHistory],  // 传入历史副本
+          dialogHistory: [...dialogHistory],
         })
+
+        const totalEndTime = Date.now()
 
         // 更新对话历史
         dialogHistory.push({ role: 'user', content: trimmed })
         dialogHistory.push({ role: 'assistant', content: result.response })
 
-        // 保持历史在 MAX_HISTORY 条以内（用户+助手消息对）
+        // 保持历史在 MAX_HISTORY 条以内
         while (dialogHistory.length > MAX_HISTORY * 2) {
           dialogHistory.shift()
           dialogHistory.shift()
@@ -283,33 +198,63 @@ export async function startSkillRepl(): Promise<void> {
         // 同步状态：根据指令更新车辆状态
         if (result.success && result.commands.length > 0) {
           applyCommandsToState(stateManager, result.commands)
-
-          // 显示状态变更
-          const newState = stateManager.getState()
-          console.log()
-          console.log(COLORS.dim + 'Commands executed:' + COLORS.reset)
-          for (const cmd of result.commands) {
-            console.log(COLORS.dim + `   - ${cmd.type}: ${JSON.stringify(cmd.params)}` + COLORS.reset)
-          }
-          console.log()
-          renderState(newState)
         }
 
-        // 显示识别的意图
-        if (result.intents && result.intents.length > 0) {
-          console.log(COLORS.dim + 'Recognized intents:' + COLORS.reset)
-          for (const intent of result.intents) {
-            console.log(COLORS.dim + `   - ${intent.skillId}/${intent.capability} (${intent.confidence})` + COLORS.reset)
+        // 渲染结果
+        if (verboseMode) {
+          const verboseResult: VerboseResult = {
+            userInput: trimmed,
+            orchestrationResult: result,
+            stateChanges: getStateChanges(stateManager, result.commands),
+            commands: result.commands,
+            timings: {
+              orchestrator: totalEndTime - totalStartTime,
+              execution: 0,
+              total: totalEndTime - totalStartTime,
+            },
           }
-          console.log()
+          renderVerboseResult(verboseResult)
+        } else {
+          const output = {
+            domain: normalizeDomain(result.intents?.[0]?.skillId || 'chat'),
+            intent: result.intents?.[0]?.capability || 'unknown',
+            slots: result.intents?.[0]?.slots || {},
+            confidence: result.intents?.[0]?.confidence || 0.5,
+            ttsText: result.response,
+            hasCommand: result.commands.length > 0,
+            meta: {
+              model: provider.name,
+              latencyMs: totalEndTime - totalStartTime,
+              tokens: { prompt: 0, completion: 0 },
+            },
+          }
+          renderResult(output, getStateChanges(stateManager, result.commands), undefined, trimmed)
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        console.log(COLORS.red + `Error: ${message}` + COLORS.reset)
+        renderError(error)
       }
 
       prompt()
     })
+  }
+
+  /**
+   * 获取状态变更列表
+   */
+  function getStateChanges(
+    _stateMgr: VehicleStateManager,
+    commands: Command[]
+  ): { field: string; from: string; to: string }[] {
+    const changes: { field: string; from: string; to: string }[] = []
+    // 简单实现：返回命令作为变更
+    for (const cmd of commands) {
+      changes.push({
+        field: cmd.type,
+        from: '-',
+        to: JSON.stringify(cmd.params),
+      })
+    }
+    return changes
   }
 
   function handleCommand(input: string): void {
@@ -323,7 +268,7 @@ export async function startSkillRepl(): Promise<void> {
         break
 
       case '/state':
-        renderState(stateManager.getState())
+        renderVehicleState(stateManager.getState())
         break
 
       case '/history':
@@ -336,27 +281,43 @@ export async function startSkillRepl(): Promise<void> {
 
       case '/model':
         if (!arg || !['gemini', 'glm'].includes(arg)) {
-          console.log(`\n  Current model: ${provider.name}`)
-          console.log('  Usage: /model gemini | /model glm\n')
+          console.log(`\n  当前模型: ${provider.name}`)
+          console.log('  用法: /model gemini | /model glm')
+          console.log('  注意: 切换模型需要重启程序\n')
           break
         }
-        console.log(`\n  Model switch requires restart\n`)
+        console.log(`\n  切换模型需要重启程序。当前模型: ${provider.name}\n`)
+        break
+
+      case '/verbose':
+      case '/v':
+        verboseMode = !verboseMode
+        console.log(`\n  详细模式: ${verboseMode ? '开启' : '关闭'}\n`)
+        if (verboseMode) {
+          console.log('  将展示完整的业务执行流程，包括:')
+          console.log('    - 用户输入阶段')
+          console.log('    - Skill 编排阶段（意图识别、Skill 执行）')
+          console.log('    - 命令执行阶段')
+          console.log('    - 状态变更阶段')
+          console.log('    - 响应生成阶段')
+          console.log('')
+        }
         break
 
       case '/reset':
         stateManager.reset()
         dialogHistory.length = 0
-        console.log('\n  Vehicle state and dialog history reset.\n')
+        console.log('\n  车辆状态和对话历史已重置。\n')
         break
 
       case '/quit':
       case '/exit':
-        console.log('\n  Goodbye!\n')
+        console.log('\n  再见!\n')
         rl.close()
         process.exit(0)
 
       default:
-        console.log(`\n  Unknown command: ${cmd}, type /help for help\n`)
+        console.log(`\n  未知命令: ${cmd}，输入 /help 查看帮助\n`)
     }
   }
 
