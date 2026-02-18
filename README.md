@@ -1,6 +1,6 @@
 # NLC Demo - 智能座舱自然语言控制系统
 
-面向新能源汽车智能座舱的自然语言控制与交互平台 Demo。用户通过语音或文本输入自然语言指令，系统利用大语言模型（LLM）进行意图理解和实体提取，将自然语言映射为结构化的车辆控制指令。
+> 极简 DEMO - 智能座舱自然语言控制系统，采用 **文件系统级 Skills V2 架构**
 
 ## 功能特性
 
@@ -26,24 +26,19 @@
 ### 智能对话
 - 自由聊天
 - 车辆状态查询
+- 天气查询
 - 多轮对话记忆
 
 ## 技术栈
 
 | 类别 | 技术 |
 |------|------|
-| 语言 | TypeScript |
-| 运行时 | Node.js (ESM) |
-| LLM | Google Gemini / 智谱 GLM |
-| 后端 | Fastify (HTTP + WebSocket) |
-| 前端 | Vue 3 + Vite + Tailwind CSS |
-| 状态管理 | Pinia |
-| 测试 | Vitest (99.47% 覆盖率) |
-| 架构 | Function Calling |
+| 语言 | TypeScript 5.7 |
+| 运行时 | Node.js >= 18 (ESM) |
+| LLM | Gemini 3 Flash / GLM-4-Plus / MiniMax-M2.5 |
+| 测试 | Vitest |
 
 ## 快速开始
-
-### CLI 模式
 
 ### 1. 克隆项目
 
@@ -67,50 +62,25 @@ cp .env.example .env
 编辑 `.env` 文件，填入你的 API Key：
 
 ```env
-# Google Gemini API Key
+# Google Gemini API Key (必填)
 GEMINI_API_KEY=your_api_key_here
 
 # 智谱 GLM API Key (可选)
 ZHIPU_API_KEY=
 
-# 默认模型: gemini, glm
+# MiniMax API Key (可选)
+MINIMAX_API_KEY=
+MINIMAX_MODEL=MiniMax-M2.5
+
+# 默认模型: gemini, glm, minimax
 DEFAULT_MODEL=gemini
 ```
 
 ### 4. 启动程序
 
-#### CLI 模式
-
 ```bash
 npm start
 ```
-
-#### Web 模式
-
-```bash
-# 安装前端依赖
-cd web && npm install && cd ..
-
-# 启动后端服务
-npm run web
-
-# 在另一个终端启动前端开发服务器
-cd web && npm run dev
-```
-
-访问 http://localhost:5173 使用 Web 界面。
-
-**生产环境部署:**
-
-```bash
-# 构建前端
-cd web && npm run build && cd ..
-
-# 启动服务 (自动服务静态文件)
-npm run web
-```
-
-访问 http://localhost:3000
 
 ## 使用示例
 
@@ -125,9 +95,9 @@ npm run web
 你> 把空调调到24度
 
 ───────── 识别结果 ─────────
-  Domain: vehicle_control
-  Intent: ac_control_set_temperature
-  Slots:  {"action":"set_temperature","temperature":24}
+  Skill: vehicle_control
+  Capability: ac_control
+  Slots: {"action":"set_temperature","temperature":24}
 ────────────────────────────
 
 小智> 好的，已为您将空调温度调至24度。
@@ -168,6 +138,7 @@ npm run web
 "还剩多少电"
 "你叫什么名字"
 "今天天气怎么样"
+"上海天气如何"
 ```
 
 ### REPL 命令
@@ -181,59 +152,63 @@ npm run web
 | `/clear` | 清除对话历史 |
 | `/reset` | 重置车辆状态 |
 | `/debug` | 开关调试模式 |
+| `/skill` | 测试 Skill 系统 |
 | `/quit` | 退出 |
 
 ## 项目结构
 
 ```
 nlc/
+├── skills/                      # Skills 配置 (V2 文件系统级)
+│   ├── vehicle_control/
+│   │   ├── skill.yaml
+│   │   └── SKILL.md
+│   ├── music/
+│   ├── navigation/
+│   └── chat/
+│       └── scripts/             # 外部脚本支持
+│           └── scripts.yaml
 ├── src/
-│   ├── cli/                    # 命令行界面
-│   │   ├── repl.ts             # REPL 交互
+│   ├── cli/                     # 命令行界面
+│   │   ├── skill-repl.ts       # REPL 入口
 │   │   └── renderer.ts         # 输出渲染
-│   ├── web/                    # Web 服务 (新增)
-│   │   ├── server.ts           # HTTP + WebSocket 服务器
-│   │   └── routes/
-│   │       ├── api.ts          # REST API 路由
-│   │       └── ws.ts           # WebSocket 处理
-│   ├── dialog/                 # 对话管理
-│   │   └── dialog-manager.ts   # 对话管理器
-│   ├── executor/               # 指令执行
-│   │   ├── command-executor.ts # 命令执行器
-│   │   └── vehicle-state.ts    # 车辆状态管理
-│   ├── llm/                    # LLM 相关
-│   │   ├── providers/          # LLM 提供者
-│   │   │   ├── gemini.ts       # Google Gemini
-│   │   │   └── zhipu.ts        # 智谱 GLM
-│   │   ├── functions/          # Function 定义
-│   │   ├── orchestrator.ts     # LLM 编排器
-│   │   ├── function-registry.ts# 函数注册表
-│   │   └── prompt-builder.ts   # Prompt 构建
-│   ├── types/                  # 类型定义
-│   ├── __tests__/              # 单元测试
-│   ├── config.ts               # 配置
-│   ├── constants.ts            # 常量
-│   └── main.ts                 # 入口
-├── web/                        # 前端项目 (新增)
-│   ├── src/
-│   │   ├── components/         # Vue 组件
-│   │   │   ├── layout/         # 布局组件
-│   │   │   ├── chat/           # 对话组件
-│   │   │   └── vehicle/        # 车辆状态组件
-│   │   ├── stores/             # Pinia 状态管理
-│   │   ├── hooks/              # Vue Hooks
-│   │   ├── services/           # API 服务
-│   │   └── types/              # 类型定义
-│   ├── index.html
-│   ├── vite.config.ts
-│   └── tailwind.config.js
-├── prompts/
-│   └── system.md               # 系统提示词
+│   ├── skills/
+│   │   └── v2/                  # Skill V2 系统
+│   │       ├── file-based-orchestrator.ts
+│   │       ├── file-based-skill-registry.ts
+│   │       ├── skill-executor.ts
+│   │       ├── skill-loader.ts
+│   │       ├── yaml-parser.ts
+│   │       └── script-executor.ts
+│   ├── dialog/                  # 对话管理
+│   │   └── new-dialog-manager.ts
+│   ├── controller/              # 控制器层
+│   │   └── central-controller.ts
+│   ├── executor/                # 指令执行
+│   │   ├── command-executor.ts
+│   │   └── vehicle-state.ts
+│   ├── llm/                     # LLM 层
+│   │   └── providers/
+│   │       ├── gemini.ts
+│   │       ├── zhipu.ts
+│   │       └── minimax.ts
+│   ├── types/                   # 类型定义
+│   └── config.ts                # 配置
 ├── test/
-│   ├── smoke-test.ts           # 冒烟测试
-│   └── e2e-test.ts             # 端到端测试
-└── docs/                       # 文档
+│   └── smoke-test.ts            # 冒烟测试
+├── codemaps/                    # 架构文档
+└── docs/                        # 开发文档
 ```
+
+## 三层加载策略
+
+Skills V2 采用渐进式披露设计：
+
+| 层级 | 文件 | 加载时机 | 用途 |
+|------|------|----------|------|
+| 第一层 | `skill.yaml` | 启动时 | 元数据和能力定义 |
+| 第二层 | `SKILL.md` | 意图识别后 | LLM 详细指令 |
+| 第三层 | 能力处理器 | 执行时 | 实际执行逻辑 |
 
 ## 测试
 
@@ -249,41 +224,13 @@ npm run test:coverage
 
 # 冒烟测试 (需要 API Key)
 npm run test:smoke
-
-# E2E 测试 (需要 API Key)
-npm run test:e2e
-```
-
-### 测试覆盖率
-
-```
--------------------|---------|----------|---------|---------|
-File               | % Stmts | % Branch | % Funcs | % Lines |
--------------------|---------|----------|---------|---------|
-All files          |   99.47 |    86.09 |   91.66 |   99.47 |
--------------------|---------|----------|---------|---------|
-```
-
-## 架构设计
-
-```
-用户输入 → DialogManager → LLMOrchestrator → LLM Provider
-                              ↓
-                         Function Calling
-                              ↓
-                     FunctionRegistry.resolve()
-                              ↓
-                       CommandExecutor
-                              ↓
-                     VehicleStateManager
-                              ↓
-                         状态变更 + TTS
 ```
 
 ## API Key 获取
 
 - **Google Gemini**: https://aistudio.google.com/apikey
 - **智谱 GLM**: https://open.bigmodel.cn/
+- **MiniMax**: https://platform.minimaxi.com/
 
 ## 许可证
 
@@ -291,7 +238,6 @@ MIT License
 
 ## 相关文档
 
-- [系统设计文档](docs/system-design.md)
-- [测试覆盖率报告](docs/test-coverage-report.md)
+- [开发指南](docs/CONTRIB.md)
 - [运维手册](docs/RUNBOOK.md)
-- [贡献指南](docs/CONTRIB.md)
+- [架构总览](codemaps/architecture.md)

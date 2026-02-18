@@ -6,10 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # 开发
-npm start              # CLI REPL 模式
-npm run dev            # CLI 开发模式（热重载）
-npm run skill          # Skill REPL 模式（V2 文件系统级 Skills）
-npm run skill:demo     # Skill 系统演示
+npm start              # Skill REPL 模式（V2 文件系统级 Skills）
+npm run dev            # 开发模式（热重载）
 npm run rewrite        # 一语多意图改写工具
 
 # 测试
@@ -104,6 +102,7 @@ skills/
 支持多模型切换，通过环境变量 `DEFAULT_MODEL` 配置：
 - Google Gemini（默认）
 - 智谱 GLM
+- MiniMax M2.5
 
 ## 开发规范
 
@@ -166,13 +165,14 @@ const newState = {
 |------|------|------|--------|
 | `GEMINI_API_KEY` | 是 | Google Gemini API Key | - |
 | `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
-| `CLAUDE_API_KEY` | 否 | Claude API Key（未实现） | - |
-| `DEFAULT_MODEL` | 否 | 默认模型选择 | `gemini` |
+| `MINIMAX_API_KEY` | 否 | MiniMax API Key | - |
+| `MINIMAX_MODEL` | 否 | MiniMax 模型 | `MiniMax-M2.5` |
+| `DEFAULT_MODEL` | 否 | 默认模型选择 (`gemini`/`glm`/`minimax`) | `gemini` |
 
 ## 运行模式
 
 - **CLI 模式** (`npm start`): REPL 交互式命令行，适合快速测试和开发
-- **Skill REPL** (`npm run skill`): V2 Skill 系统独立测试
+- **Skill REPL**: 在 REPL 中使用 `/skill` 命令测试 V2 Skill 系统
 
 ## 相关文档
 

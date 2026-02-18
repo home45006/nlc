@@ -1,6 +1,6 @@
 # 后端模块
 
-> 更新时间: 2026-02-17
+> 更新时间: 2026-02-18
 
 ## 架构概述
 
@@ -260,6 +260,9 @@ providers/
  |
  + zhipu.ts             GLM API 适配
      + ZhipuProvider.chat()
+ |
+ + minimax.ts            MiniMax API 适配
+     + MiniMaxProvider.chat()
 
 orchestrator.ts         LLM 编排器
  + LLMOrchestrator
@@ -284,8 +287,8 @@ intent-rewriter.ts      意图改写器
 ### 8. CLI 层 (`src/cli/`)
 
 ```
-repl.ts                 REPL 交互
- + startRepl()          入口函数
+skill-repl.ts           REPL 交互入口 (主入口)
+ + startSkillRepl()     入口函数
  + selectModel()        模型选择
  + handleCommand()      斜杠命令处理
  |   + /help    帮助信息
@@ -295,11 +298,9 @@ repl.ts                 REPL 交互
  |   + /clear   清除历史
  |   + /reset   重置状态
  |   + /debug   调试信息
+ |   + /skill   Skill REPL 测试
  |   + /quit    退出
  + createProvider()     Provider 工厂
-
-skill-repl.ts           Skill REPL
- + startSkillRepl()     V2 Skill 系统测试入口
 
 renderer.ts             终端输出
  + renderBanner()       启动横幅
@@ -316,7 +317,7 @@ rewrite-cli.ts          Query 改写工具
 | 依赖 | 版本 | 用途 | 调用位置 |
 |------|------|------|----------|
 | `dotenv` | ^16.x | 环境变量 | config.ts |
-| `node:readline` | - | CLI 输入 | cli/repl.ts |
+| `node:readline` | - | CLI 输入 | cli/skill-repl.ts |
 | `node:fs/path` | - | 文件操作 | skills/v2/skill-loader.ts |
 
 ## 架构对比

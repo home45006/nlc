@@ -24,8 +24,9 @@ npm start
 |------|------|------|--------|
 | `GEMINI_API_KEY` | 是 | Google Gemini API Key | - |
 | `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
-| `CLAUDE_API_KEY` | 否 | Claude API Key（未实现） | - |
-| `DEFAULT_MODEL` | 否 | 默认模型选择 | `gemini` |
+| `MINIMAX_API_KEY` | 否 | MiniMax API Key | - |
+| `MINIMAX_MODEL` | 否 | MiniMax 模型 | `MiniMax-M2.5` |
+| `DEFAULT_MODEL` | 否 | 默认模型选择 (`gemini`/`glm`/`minimax`) | `gemini` |
 
 ### 端口说明
 
@@ -43,9 +44,6 @@ npm start
 
 # 开发模式（热重载）
 npm run dev
-
-# Skill REPL 模式
-npm run skill
 
 # 退出 REPL
 /quit
@@ -164,7 +162,7 @@ user → assistant(functionCall only) → tool(result) → assistant(text确认)
 1. 检查 `skills/` 目录结构是否正确
 2. 验证 `skill.yaml` 格式是否有效
 3. 查看启动日志中的 Skill 加载信息
-4. 使用 `npm run skill` 测试 Skill REPL
+4. 使用 `/skill` REPL 命令测试 Skill 系统
 
 **常见错误**:
 
@@ -179,9 +177,6 @@ user → assistant(functionCall only) → tool(result) → assistant(text确认)
 ```bash
 # 快速验证 API 连通性（5 条用例）
 npm run test:smoke
-
-# Skill 系统演示
-npm run skill:demo
 
 # 完整单元测试
 npm test

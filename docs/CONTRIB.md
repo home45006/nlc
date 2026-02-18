@@ -27,8 +27,9 @@ cp .env.example .env
 |------|------|------|--------|
 | `GEMINI_API_KEY` | 是 | Google Gemini API Key | - |
 | `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
-| `CLAUDE_API_KEY` | 否 | Claude API Key（未实现） | - |
-| `DEFAULT_MODEL` | 否 | 默认模型选择 | `gemini` |
+| `MINIMAX_API_KEY` | 否 | MiniMax API Key | - |
+| `MINIMAX_MODEL` | 否 | MiniMax 模型 | `MiniMax-M2.5` |
+| `DEFAULT_MODEL` | 否 | 默认模型选择 (`gemini`/`glm`/`minimax`) | `gemini` |
 
 ## 脚本命令
 
@@ -38,8 +39,6 @@ cp .env.example .env
 |------|------|------|
 | `npm start` | 启动交互式 REPL | CLI 生产模式运行（主入口） |
 | `npm run dev` | 开发模式（热重载） | CLI 开发调试 |
-| `npm run skill` | Skill REPL 模式 | V2 Skill 系统独立测试 |
-| `npm run skill:demo` | Skill 演示 | 简单 Skill 测试脚本 |
 | `npm run rewrite` | 一语多意图改写工具 | Query 改写测试 |
 
 ### 测试脚本

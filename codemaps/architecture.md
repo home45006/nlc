@@ -1,6 +1,6 @@
 # 架构总览
 
-> 更新时间: 2026-02-17 | 源文件: 62 | 测试文件: 22
+> 更新时间: 2026-02-18 | 源文件: 43 | 测试文件: 23
 
 ## 系统定位
 
@@ -37,7 +37,7 @@
 |  CommandExecutor + VehicleStateManager                   |
 +---------------------------------------------------------+
 |  LLM 层 (src/llm/)                                       |
-|  providers/gemini.ts + providers/zhipu.ts               |
+|  providers/gemini.ts + zhipu.ts + minimax.ts            |
 +---------------------------------------------------------+
 |  类型层 (src/types/)                                     |
 |  domain . vehicle . llm . dialog                        |
@@ -250,13 +250,13 @@ StateChange[] + TTS 文本
 | **LLM 层** | | |
 | providers/gemini | Gemini API 适配 | src/llm/providers/gemini.ts |
 | providers/zhipu | GLM API 适配 | src/llm/providers/zhipu.ts |
+| providers/minimax | MiniMax API 适配 | src/llm/providers/minimax.ts |
 | orchestrator | LLM 编排 | src/llm/orchestrator.ts |
 | function-registry | 工具注册表 | src/llm/function-registry.ts |
 | prompt-builder | Prompt 构建 | src/llm/prompt-builder.ts |
 | intent-rewriter | 意图改写 | src/llm/intent-rewriter.ts |
 | **CLI** | | |
-| repl | REPL 交互 | src/cli/repl.ts |
-| skill-repl | Skill REPL | src/cli/skill-repl.ts |
+| skill-repl | REPL 交互入口 | src/cli/skill-repl.ts |
 | renderer | 终端输出 | src/cli/renderer.ts |
 | rewrite-cli | Query 改写工具 | src/cli/rewrite-cli.ts |
 
@@ -298,7 +298,7 @@ StateChange[] + TTS 文本
 ### 后端
 - **运行时**: Node.js >= 18, tsx
 - **语言**: TypeScript 5.7 (strict, ESM)
-- **LLM**: Gemini 3 Flash (主力), GLM-4-Plus (备选)
+- **LLM**: Gemini 3 Flash (主力), GLM-4-Plus / MiniMax-M2.5 (备选)
 - **依赖**: dotenv
 
 ### 基础设施
@@ -317,7 +317,7 @@ StateChange[] + TTS 文本
 ## 运行模式
 
 - **CLI 模式** (`npm start`): REPL 交互式命令行
-- **Skill REPL** (`npm run skill`): V2 Skill 系统独立测试
+- **Skill REPL**: 在 REPL 中使用 `/skill` 命令测试 V2 Skill 系统
 
 ## 测试覆盖
 
@@ -349,6 +349,12 @@ StateChange[] + TTS 文本
 6. **注册表模式**: FileBasedSkillRegistry 管理 Skill 元数据
 
 ## 架构变更记录
+
+### 2026-02-18
+- 新增 MiniMax M2.5 LLM Provider (`src/llm/providers/minimax.ts`)
+- 移除旧的 `src/cli/repl.ts`，重构为单一入口
+- 更新 DEFAULT_MODEL 支持 `minimax` 选项
+- Skill REPL 改为在主 REPL 中使用 `/skill` 命令
 
 ### 2026-02-17 (下午)
 - 新增脚本执行子系统
