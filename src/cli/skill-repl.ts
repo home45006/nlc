@@ -219,7 +219,7 @@ export async function startSkillRepl(): Promise<void> {
 
   // 模式开关
   let verboseMode = false
-  let streamMode = false
+  let streamMode = true
 
   renderBanner(provider.name)
   console.log(`  已加载 ${skills.length} 个 Skills | 输入 /help 查看帮助`)

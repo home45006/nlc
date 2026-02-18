@@ -409,12 +409,12 @@ ${rawOutput}
     // 如果有流式回调，使用流式输出
     if (this.streamChunk) {
       let firstChunk = true
-      const wrappedChunk = async (chunk: string) => {
+      const wrappedChunk = (chunk: string) => {
         if (firstChunk) {
           firstChunk = false
           console.log(`  ⏱️  LLM润色首token耗时: ${Date.now() - startTime}ms`)
         }
-        await this.streamChunk!(chunk)
+        this.streamChunk!(chunk)
       }
       const response = await this.llmProvider.streamChat(
         {

@@ -236,7 +236,7 @@ export class MiniMaxProvider implements LLMProvider {
 
                 if (content) {
                   fullText += content
-                  await onChunk(content)
+                  onChunk(content)
                 }
 
                 if (data.usage) {

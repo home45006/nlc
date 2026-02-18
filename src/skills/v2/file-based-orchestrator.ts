@@ -293,12 +293,12 @@ export class FileBasedSkillOrchestrator {
     // 如果有流式回调，使用流式输出
     if (context.streamChunk) {
       let firstChunk = true
-      const wrappedChunk = async (chunk: string) => {
+      const wrappedChunk = (chunk: string) => {
         if (firstChunk) {
           firstChunk = false
           console.log(`  ⏱️  意图识别首token耗时: ${Date.now() - startTime}ms`)
         }
-        await context.streamChunk!(chunk)
+        context.streamChunk!(chunk)
       }
       const response = await this.provider.streamChat(
         {
@@ -438,12 +438,12 @@ export class FileBasedSkillOrchestrator {
       // 如果有流式回调，使用流式输出
       if (context.streamChunk) {
         let firstChunk = true
-        const wrappedChunk = async (chunk: string) => {
+        const wrappedChunk = (chunk: string) => {
           if (firstChunk) {
             firstChunk = false
             console.log(`  ⏱️  Chat 首token耗时: ${Date.now() - startTime}ms`)
           }
-          await context.streamChunk!(chunk)
+          context.streamChunk!(chunk)
         }
         const response = await this.provider.streamChat(
           {

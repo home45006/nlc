@@ -296,7 +296,7 @@ export class GeminiProvider implements LLMProvider {
               const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
               if (textContent) {
                 fullText += textContent
-                await onChunk(textContent)
+                onChunk(textContent)
               }
 
               // 提取 usage

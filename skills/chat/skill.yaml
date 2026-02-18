@@ -84,9 +84,12 @@ capabilities:
   - name: system_info
     description: 系统信息 - 查询系统状态
     examples:
+      - 查询系统信息
+      - 查看系统状态
       - 系统状态怎么样
       - CPU 使用率多少
       - 内存还剩多少
+      - 磁盘空间
     slots:
       - name: infoType
         type: string

@@ -152,17 +152,17 @@ export class ZhipuProvider implements LLMProvider {
             if (dataStr === '[DONE]') continue
 
             try {
-              const data = JSON.parse(dataStr) as ZhipuStreamChoice
-
-              const content = data.delta?.content || ''
+              const data = JSON.parse(dataStr) as ZhipuStreamResponse
+              // 正确访问：data.choices[0].delta.content
+              const content = data.choices?.[0]?.delta?.content || ''
               if (content) {
                 fullText += content
-                await onChunk(content)
+                onChunk(content)
               }
 
-              if (data.usage) {
-                promptTokens = data.usage.prompt_tokens ?? promptTokens
-                completionTokens = data.usage.completion_tokens ?? completionTokens
+              if (data.choices?.[0]?.usage) {
+                promptTokens = data.choices[0].usage.prompt_tokens ?? promptTokens
+                completionTokens = data.choices[0].usage.completion_tokens ?? completionTokens
               }
             } catch {
               // 忽略解析错误
@@ -182,16 +182,22 @@ export class ZhipuProvider implements LLMProvider {
   }
 }
 
-// 智谱流式响应增量类型
-interface ZhipuStreamChoice {
-  delta?: {
-    role?: string
-    content?: string
-  }
-  finish_reason?: string
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
+// 智谱流式响应结构
+interface ZhipuStreamResponse {
+  id: string
+  created: number
+  model: string
+  choices: Array<{
+    index: number
+    delta?: {
+      role?: string
+      content?: string
+    }
+    finish_reason?: string
+    usage?: {
+      prompt_tokens: number
+      completion_tokens: number
+      total_tokens: number
+    }
+  }>
 }
