@@ -1,13 +1,8 @@
-/**
- * Skill Orchestrator CLI (V2 架构)
- *
- * 演示 FileBasedSkillOrchestrator 的 LLM 自主选择和调用过程
- */
-
 import { createInterface } from 'node:readline'
 import { config } from '../config.js'
 import { GeminiProvider } from '../llm/providers/gemini.js'
 import { ZhipuProvider } from '../llm/providers/zhipu.js'
+import { MiniMaxProvider } from '../llm/providers/minimax.js'
 import type { LLMProvider, ChatMessage } from '../types/llm.js'
 import type { Command } from '../core/types.js'
 import type { Skill } from '../skills/types.js'
@@ -25,7 +20,7 @@ import {
   type VerboseResult,
 } from './renderer.js'
 
-type ModelName = 'gemini' | 'glm'
+type ModelName = 'gemini' | 'glm' | 'minimax'
 
 // 对话历史最大条数
 const MAX_HISTORY = 5
@@ -43,6 +38,13 @@ function createProvider(model: ModelName): LLMProvider {
       throw new Error('未配置 ZHIPU_API_KEY，请在 .env 文件中设置')
     }
     return new ZhipuProvider(config.zhipuApiKey)
+  }
+
+  if (model === 'minimax') {
+    if (!config.minimaxApiKey) {
+      throw new Error('未配置 MINIMAX_API_KEY，请在 .env 文件中设置')
+    }
+    return new MiniMaxProvider(config.minimaxApiKey)
   }
 
   throw new Error(`不支持的模型: ${model}`)
@@ -74,23 +76,53 @@ function renderSkills(skills: Skill[]): void {
 }
 
 async function selectModel(rl: ReturnType<typeof createInterface>): Promise<ModelName> {
-  return new Promise((resolve) => {
-    console.log('')
-    console.log('┌─────────────────────────────────┐')
-    console.log('│      请选择要使用的模型          │')
-    console.log('├─────────────────────────────────┤')
-    if (config.geminiApiKey) {
-      console.log('│  1. Gemini 3 Flash              │')
+  // 优先使用命令行参数指定模型
+  const modelArg = process.argv.find(arg => arg.startsWith('--model='))
+  if (modelArg) {
+    const model = modelArg.split('=')[1] as ModelName
+    if (['gemini', 'glm', 'minimax'].includes(model)) {
+      console.log(`  使用命令行指定的模型: ${model}\n`)
+      return model
     }
-    if (config.zhipuApiKey) {
-      console.log('│  2. GLM-4-Flash (智谱)          │')
-    }
-    console.log('├─────────────────────────────────┤')
-    console.log(`│  直接回车使用默认: ${config.defaultModel}`)
-    console.log('└─────────────────────────────────┘')
-    console.log('')
+  }
 
-    rl.question('选择 [1/2]: ', (input) => {
+  // 其次使用环境变量指定模型
+  const envModel = process.env.NLC_MODEL as ModelName | undefined
+  if (envModel && ['gemini', 'glm', 'minimax'].includes(envModel)) {
+    console.log(`  使用环境变量指定的模型: ${envModel}\n`)
+    return envModel
+  }
+
+  // 检查 readline 是否已关闭
+  if (rl.closed) {
+    return config.defaultModel as ModelName
+  }
+
+  // 显示模型选择菜单
+  console.log('')
+  console.log('┌─────────────────────────────────┐')
+  console.log('│      请选择要使用的模型          │')
+  console.log('├─────────────────────────────────┤')
+  if (config.geminiApiKey) {
+    const isDefault = config.defaultModel === 'gemini'
+    console.log(`│  1. Gemini 3 Flash${isDefault ? ' [默认]' : ''}            │`)
+  }
+  if (config.zhipuApiKey) {
+    const isDefault = config.defaultModel === 'glm'
+    console.log(`│  2. GLM-4-Flash (智谱)${isDefault ? ' [默认]' : ''}      │`)
+  }
+  if (config.minimaxApiKey) {
+    const isDefault = config.defaultModel === 'minimax'
+    console.log(`│  3. MiniMax M2.5${isDefault ? ' [默认]' : ''}               │`)
+  }
+  console.log('├─────────────────────────────────┤')
+  console.log(`│  直接回车使用默认: ${config.defaultModel}`)
+  console.log('└─────────────────────────────────┘')
+  console.log('')
+
+  // 使用 readline 等待输入
+  return new Promise((resolve) => {
+    rl.question('选择 [1/2/3]: ', (input) => {
       const trimmed = input.trim()
 
       if (!trimmed) {
@@ -102,6 +134,8 @@ async function selectModel(rl: ReturnType<typeof createInterface>): Promise<Mode
         resolve('gemini')
       } else if (trimmed === '2' && config.zhipuApiKey) {
         resolve('glm')
+      } else if (trimmed === '3' && config.minimaxApiKey) {
+        resolve('minimax')
       } else {
         console.log(`\n  使用默认模型: ${config.defaultModel}\n`)
         resolve(config.defaultModel as ModelName)
@@ -126,6 +160,41 @@ export async function startSkillRepl(): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
+  })
+
+  let isExiting = false
+
+  /**
+   * 统一退出函数（用于 /quit、/exit、SIGTERM 等正常退出路径）
+   * @param message 退出提示（undefined 表示静默退出）
+   */
+  function gracefulExit(message?: string): void {
+    if (isExiting) return
+    isExiting = true
+
+    rl.close()
+    if (message) {
+      console.log(message)
+    }
+    process.exit(0)
+  }
+
+  // 用户按 Ctrl+C 的处理流程：
+  // readline raw mode 拦截了终端 Ctrl+C，内核不会向进程组广播 SIGINT。
+  // 只杀 ppid（tsx watch）会产生孤儿子进程：tsx watch 死了但我们自己还活着，
+  // tsx watch 来不及杀子进程，孤儿进程占着 stdin，下次启动时导致输入混乱。
+  // 解决方案：向进程组（pid=0）发 SIGKILL，子进程和 tsx watch 同时立即死亡，
+  // 不产生孤儿，无竞态。用户的 shell（不在此进程组）不受影响。
+  rl.on('SIGINT', () => {
+    if (isExiting) return
+    isExiting = true
+    process.stdout.write('\n\n  程序已退出.\n\n')
+    process.kill(0, 'SIGKILL')
+  })
+
+  // tsx watch 重启时发 SIGTERM：静默退出，不反杀父进程（否则 tsx watch 也会退出）
+  process.on('SIGTERM', () => {
+    gracefulExit()
   })
 
   // 选择模型
@@ -156,6 +225,11 @@ export async function startSkillRepl(): Promise<void> {
   console.log('')
 
   const prompt = (): void => {
+    // 检查 readline 是否已关闭
+    if (rl.closed) {
+      return
+    }
+
     rl.question('你> ', async (input) => {
       const trimmed = input.trim()
 
@@ -280,9 +354,9 @@ export async function startSkillRepl(): Promise<void> {
         break
 
       case '/model':
-        if (!arg || !['gemini', 'glm'].includes(arg)) {
+        if (!arg || !['gemini', 'glm', 'minimax'].includes(arg)) {
           console.log(`\n  当前模型: ${provider.name}`)
-          console.log('  用法: /model gemini | /model glm')
+          console.log('  用法: /model gemini | /model glm | /model minimax')
           console.log('  注意: 切换模型需要重启程序\n')
           break
         }
@@ -310,11 +384,15 @@ export async function startSkillRepl(): Promise<void> {
         console.log('\n  车辆状态和对话历史已重置。\n')
         break
 
+      case '/clear':
+        dialogHistory.length = 0
+        console.log('\n  对话历史已清除。\n')
+        break
+
       case '/quit':
       case '/exit':
-        console.log('\n  再见!\n')
-        rl.close()
-        process.exit(0)
+        gracefulExit('\n  再见!\n')
+        return
 
       default:
         console.log(`\n  未知命令: ${cmd}，输入 /help 查看帮助\n`)
@@ -323,9 +401,3 @@ export async function startSkillRepl(): Promise<void> {
 
   prompt()
 }
-
-// 启动 CLI
-startSkillRepl().catch((error) => {
-  console.error('Startup failed:', error)
-  process.exit(1)
-})

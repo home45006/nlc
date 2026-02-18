@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
-    "dev": "tsx watch src/main.ts",
-    "skill": "tsx src/cli/skill-repl.ts",
-    "skill:demo": "tsx test/simple-test.ts",
+    "dev": "tsx src/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -20,6 +18,10 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^1.6.0",
+    "depcheck": "^1.4.7",
+    "knip": "^5.83.1",
+    "nodemon": "^3.1.11",
+    "ts-prune": "^0.10.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^1.6.0"

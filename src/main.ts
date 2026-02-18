@@ -1,6 +1,6 @@
-import { startRepl } from './cli/repl.js'
+import { startSkillRepl } from './cli/skill-repl.js'
 
-startRepl().catch((error) => {
+startSkillRepl().catch((error) => {
   console.error('启动失败:', error)
   process.exit(1)
 })
