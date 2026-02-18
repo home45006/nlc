@@ -12,7 +12,7 @@
  * - 第三层：执行时使用能力处理器或脚本
  */
 
-import type { LLMProvider, ChatMessage } from '../../types/llm.js'
+import type { LLMProvider, ChatMessage, StreamChunkHandler } from '../../types/llm.js'
 import type { VehicleState } from '../../types/vehicle.js'
 import type { Command } from '../../core/types.js'
 import type {
@@ -59,6 +59,8 @@ export interface OrchestratorContext {
   previousDomain?: string
   /** 当前查询 */
   currentQuery?: string
+  /** 流式输出回调 */
+  streamChunk?: StreamChunkHandler
 }
 
 /**
@@ -216,6 +218,11 @@ export class FileBasedSkillOrchestrator {
       await this.initialize()
     }
 
+    // 设置流式回调到 executor（用于脚本 LLM 润色）
+    if (context.streamChunk) {
+      this.executor.setStreamChunk(context.streamChunk)
+    }
+
     try {
       // 1. LLM 意图识别
       const recognitionResult = await this.recognizeIntents(userQuery, context)
@@ -281,11 +288,37 @@ export class FileBasedSkillOrchestrator {
     // 添加当前查询
     messages.push({ role: 'user', content: userQuery })
 
+    const startTime = Date.now()
+
+    // 如果有流式回调，使用流式输出
+    if (context.streamChunk) {
+      let firstChunk = true
+      const wrappedChunk = async (chunk: string) => {
+        if (firstChunk) {
+          firstChunk = false
+          console.log(`  ⏱️  意图识别首token耗时: ${Date.now() - startTime}ms`)
+        }
+        await context.streamChunk!(chunk)
+      }
+      const response = await this.provider.streamChat(
+        {
+          messages,
+          temperature: 0.1,
+          maxTokens: 2000,
+        },
+        wrappedChunk
+      )
+      return this.parseIntentResponse(response.content || '')
+    }
+
     const response = await this.provider.chat({
       messages,
       temperature: 0.1,
       maxTokens: 2000,
     })
+
+    // 输出首token耗时
+    console.log(`  ⏱️  意图识别首token耗时: ${Date.now() - startTime}ms`)
 
     return this.parseIntentResponse(response.content || '')
   }
@@ -399,13 +432,38 @@ export class FileBasedSkillOrchestrator {
     messages.push({ role: 'user', content: userQuery })
 
     try {
-      const response = await this.provider.chat({
-        messages,
-        temperature: 0.7, // 稍高的温度使回复更自然
-        maxTokens: 200,
-      })
+      let chatResponse: string
+      const startTime = Date.now()
 
-      const chatResponse = response.content || '我暂时无法理解您的请求，请换个方式说说看。'
+      // 如果有流式回调，使用流式输出
+      if (context.streamChunk) {
+        let firstChunk = true
+        const wrappedChunk = async (chunk: string) => {
+          if (firstChunk) {
+            firstChunk = false
+            console.log(`  ⏱️  Chat 首token耗时: ${Date.now() - startTime}ms`)
+          }
+          await context.streamChunk!(chunk)
+        }
+        const response = await this.provider.streamChat(
+          {
+            messages,
+            temperature: 0.7,
+            maxTokens: 200,
+          },
+          wrappedChunk
+        )
+        chatResponse = response.content || '我暂时无法理解您的请求，请换个方式说说看。'
+      } else {
+        const response = await this.provider.chat({
+          messages,
+          temperature: 0.7,
+          maxTokens: 200,
+        })
+        chatResponse = response.content || '我暂时无法理解您的请求，请换个方式说说看。'
+        // 输出首token耗时
+        console.log(`  ⏱️  Chat 首token耗时: ${Date.now() - startTime}ms`)
+      }
 
       return {
         success: true,

@@ -117,6 +117,7 @@ export function renderHelp(): void {
   console.log('    /rewrite  意图改写 (如: /rewrite 开空调并播放音乐)')
   console.log('    /skills   查看已加载 Skills (仅 skill 模式)')
   console.log('    /verbose  显示详细业务执行流程 (别名: /v)')
+  console.log('    /stream   开关流式输出 (别名: /s)')
   console.log('    /debug    开关调试模式')
   console.log('    /quit     退出')
   console.log('────────────────────────')

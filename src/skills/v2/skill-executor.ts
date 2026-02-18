@@ -344,6 +344,15 @@ export class SkillExecutor {
   }
 
   /**
+   * 设置流式输出回调
+   */
+  setStreamChunk(callback?: (chunk: string) => void | Promise<void>): void {
+    if (this.scriptHandler) {
+      this.scriptHandler.setStreamChunk(callback)
+    }
+  }
+
+  /**
    * 验证槽位
    */
   private validateSlots(

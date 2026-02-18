@@ -39,7 +39,19 @@ export interface ChatResponse {
   }
 }
 
+/**
+ * 流式输出回调
+ */
+export type StreamChunkHandler = (chunk: string) => void | Promise<void>
+
 export interface LLMProvider {
   readonly name: string
   chat(request: ChatRequest): Promise<ChatResponse>
+  /**
+   * 流式聊天，返回增量内容
+   * @param request 请求
+   * @param onChunk 每收到一个 chunk 时的回调
+   * @returns 完整的响应
+   */
+  streamChat(request: ChatRequest, onChunk: StreamChunkHandler): Promise<ChatResponse>
 }

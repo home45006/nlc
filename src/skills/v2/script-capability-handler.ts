@@ -5,7 +5,7 @@
  */
 
 import { resolve } from 'node:path'
-import type { LLMProvider } from '../../types/llm.js'
+import type { LLMProvider, StreamChunkHandler } from '../../types/llm.js'
 import type { SkillContext, SkillResult } from '../types.js'
 import type { ScriptConfig, ScriptResult as ExecResult } from './script-executor.js'
 import type { ScriptCapabilityExtension } from './types.js'
@@ -26,6 +26,8 @@ export interface ScriptHandlerConfig {
   sandboxConfig?: ConstructorParameters<typeof SandboxManager>[0]
   /** LLM Provider（用于润色脚本输出） */
   llmProvider?: LLMProvider
+  /** 流式输出回调（用于实时展示 LLM 润色结果） */
+  streamChunk?: StreamChunkHandler
 }
 
 /**
@@ -53,16 +55,26 @@ export class ScriptCapabilityHandler {
   private readonly fallbackExecutor: ScriptExecutor
   /** LLM Provider（用于润色脚本输出） */
   private readonly llmProvider?: LLMProvider
+  /** 流式输出回调 */
+  private streamChunk?: StreamChunkHandler
 
   constructor(config: ScriptHandlerConfig) {
     this.fallbackExecutor = createScriptExecutor(config.skillsRootDir)
     this.fallbackConfigLoader = createScriptConfigLoader(config.skillsRootDir)
     this.enableSandbox = config.enableSandbox ?? true
     this.llmProvider = config.llmProvider
+    this.streamChunk = config.streamChunk
 
     if (this.enableSandbox) {
       this.sandboxManager = createSandboxManager(config.sandboxConfig)
     }
+  }
+
+  /**
+   * 更新流式输出回调
+   */
+  setStreamChunk(callback?: StreamChunkHandler): void {
+    this.streamChunk = callback
   }
 
   /**
@@ -193,6 +205,14 @@ export class ScriptCapabilityHandler {
       }
     }
 
+    // 输出脚本调用信息
+    console.log('')
+    console.log('─'.repeat(50))
+    console.log(`  📜 脚本调用: ${scriptConfig.name} (${scriptExtension.scriptId})`)
+    console.log(`  📝 能力: ${capability}`)
+    console.log(`  📥 参数: ${JSON.stringify(slots)}`)
+    console.log('─'.repeat(50))
+
     // 验证输入
     const validation = this.validateInput(slots, scriptExtension)
     if (!validation.valid) {
@@ -311,6 +331,8 @@ export class ScriptCapabilityHandler {
     extension: ScriptCapabilityExtension
   ): Promise<SkillResult> {
     if (!result.success) {
+      console.log(`  ❌ 脚本执行失败: ${result.error ?? result.stderr ?? '未知错误'}`)
+      console.log('─'.repeat(50))
       return {
         success: false,
         intent: capability,
@@ -334,17 +356,28 @@ export class ScriptCapabilityHandler {
       outputData = { rawOutput: result.stdout }
     }
 
+    // 输出脚本原始结果
+    console.log(`  ✅ 脚本执行成功`)
+    console.log(`  📤 原始输出:`)
+    console.log(`     ${result.stdout.replace(/\n/g, '\n     ')}`)
+
     // 格式化输出
     let ttsText = this.formatOutput(outputData, extension)
 
     // 如果需要 LLM 润色
     if (extension.summarizeWithLlm && this.llmProvider) {
+      console.log('')
+      console.log(`  🔄 LLM 润色中...`)
       try {
         ttsText = await this.llmSummarize(ttsText, capability)
+        console.log(`  ✅ LLM 润色完成`)
       } catch (error) {
         console.warn('[ScriptCapabilityHandler] LLM 润色失败，使用原始输出:', error)
       }
     }
+
+    console.log(`  💬 播报文本: ${ttsText}`)
+    console.log('─'.repeat(50))
 
     return {
       success: true,
@@ -371,6 +404,31 @@ ${rawOutput}
 
 请将上述结果用简洁、自然的车载语音播报形式返回（50字以内）。直接返回播报内容，不需要引号或其他装饰。`
 
+    const startTime = Date.now()
+
+    // 如果有流式回调，使用流式输出
+    if (this.streamChunk) {
+      let firstChunk = true
+      const wrappedChunk = async (chunk: string) => {
+        if (firstChunk) {
+          firstChunk = false
+          console.log(`  ⏱️  LLM润色首token耗时: ${Date.now() - startTime}ms`)
+        }
+        await this.streamChunk!(chunk)
+      }
+      const response = await this.llmProvider.streamChat(
+        {
+          messages: [
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          maxTokens: 256,
+        },
+        wrappedChunk
+      )
+      return response.content ?? rawOutput
+    }
+
     const response = await this.llmProvider.chat({
       messages: [
         { role: 'user', content: prompt }
@@ -378,6 +436,9 @@ ${rawOutput}
       temperature: 0.7,
       maxTokens: 256,
     })
+
+    // 输出首token耗时
+    console.log(`  ⏱️  LLM润色首token耗时: ${Date.now() - startTime}ms`)
 
     return response.content ?? rawOutput
   }

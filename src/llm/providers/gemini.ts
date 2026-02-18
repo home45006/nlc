@@ -1,9 +1,13 @@
-import type { ChatMessage, ChatRequest, ChatResponse, LLMProvider, ToolCall, ToolDefinition } from '../../types/index.js'
+import type { ChatMessage, ChatRequest, ChatResponse, LLMProvider, StreamChunkHandler, ToolCall, ToolDefinition } from '../../types/index.js'
 
 const GEMINI_MODEL = 'gemini-3-flash-preview'
 
 function getApiUrl(apiKey: string): string {
   return `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
+}
+
+function getStreamApiUrl(apiKey: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?key=${apiKey}`
 }
 
 // ---- Gemini API 类型 ----
@@ -56,12 +60,12 @@ function convertMessages(messages: ReadonlyArray<ChatMessage>): {
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      systemInstruction = msg.content
+      systemInstruction = msg.content ?? undefined
       continue
     }
 
     if (msg.role === 'user') {
-      contents.push({ role: 'user', parts: [{ text: msg.content }] })
+      contents.push({ role: 'user', parts: [{ text: msg.content ?? '' }] })
       continue
     }
 
@@ -90,7 +94,7 @@ function convertMessages(messages: ReadonlyArray<ChatMessage>): {
       // Gemini 要求 functionResponse 放在 user 角色下，或者跟在 model 的 functionCall 后面
       // 实际上 Gemini 使用 role: "user" + functionResponse part
       // 但如果前一条是 model 的 functionCall，需要合并为 function response
-      const response = JSON.parse(msg.content) as Record<string, unknown>
+      const response = JSON.parse(msg.content ?? '{}') as Record<string, unknown>
       // 找到对应的 function name
       const fnName = findFunctionNameForToolCallId(messages, msg.tool_call_id)
       contents.push({
@@ -228,5 +232,108 @@ export class GeminiProvider implements LLMProvider {
         completionTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
       },
     }
+  }
+
+  async streamChat(request: ChatRequest, onChunk: StreamChunkHandler): Promise<ChatResponse> {
+    const { systemInstruction, contents } = convertMessages(request.messages)
+
+    const body: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        temperature: request.temperature ?? 0.3,
+        maxOutputTokens: request.maxTokens ?? 1024,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }
+
+    if (systemInstruction) {
+      body.systemInstruction = { parts: [{ text: systemInstruction }] }
+    }
+
+    if (request.tools && request.tools.length > 0) {
+      body.tools = convertTools(request.tools)
+      body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
+    }
+
+    const response = await fetch(getStreamApiUrl(this.apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Gemini API error (${response.status}): ${errorText}`)
+    }
+
+    if (!response.body) {
+      throw new Error('Gemini API returned empty response body')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let fullText = ''
+    let promptTokens = 0
+    let completionTokens = 0
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n').filter(line => line.trim())
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6)
+            if (dataStr === '[DONE]') continue
+
+            try {
+              const data = JSON.parse(dataStr) as GeminiStreamResponse
+
+              // 提取文本内容
+              const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+              if (textContent) {
+                fullText += textContent
+                await onChunk(textContent)
+              }
+
+              // 提取 usage
+              if (data.usageMetadata) {
+                promptTokens = data.usageMetadata.promptTokenCount ?? promptTokens
+                completionTokens = data.usageMetadata.candidatesTokenCount ?? completionTokens
+              }
+            } catch {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+
+    return {
+      content: fullText || null,
+      toolCalls: [],
+      usage: { promptTokens, completionTokens },
+    }
+  }
+}
+
+// Gemini 流式响应类型
+interface GeminiStreamResponse {
+  candidates?: Array<{
+    content: {
+      parts: Array<{ text?: string }>
+      role: string
+    }
+    finishReason?: string
+  }>
+  usageMetadata?: {
+    promptTokenCount: number
+    candidatesTokenCount: number
+    totalTokenCount: number
   }
 }

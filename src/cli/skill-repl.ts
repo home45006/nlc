@@ -219,6 +219,7 @@ export async function startSkillRepl(): Promise<void> {
 
   // 模式开关
   let verboseMode = false
+  let streamMode = false
 
   renderBanner(provider.name)
   console.log(`  已加载 ${skills.length} 个 Skills | 输入 /help 查看帮助`)
@@ -251,11 +252,33 @@ export async function startSkillRepl(): Promise<void> {
         // 获取当前车辆状态
         const vehicleState = stateManager.getState()
 
+        // 构建流式回调（如果启用）
+        let firstTokenTime = 0
+        const streamChunkHandler = streamMode
+          ? (chunk: string) => {
+              // 记录首token耗时
+              if (firstTokenTime === 0) {
+                firstTokenTime = Date.now()
+              }
+              process.stdout.write(chunk)
+            }
+          : undefined
+
         // 调用 Orchestrator
         const result = await orchestrator.process(trimmed, {
           vehicleState,
           dialogHistory: [...dialogHistory],
+          streamChunk: streamChunkHandler,
         })
+
+        // 如果启用流式模式，换行并显示首token耗时
+        if (streamMode) {
+          console.log('')
+          if (firstTokenTime > 0) {
+            const firstTokenLatency = firstTokenTime - totalStartTime
+            console.log(`  ⏱️  首 token 耗时: ${firstTokenLatency}ms`)
+          }
+        }
 
         const totalEndTime = Date.now()
 
@@ -375,6 +398,15 @@ export async function startSkillRepl(): Promise<void> {
           console.log('    - 状态变更阶段')
           console.log('    - 响应生成阶段')
           console.log('')
+        }
+        break
+
+      case '/stream':
+      case '/s':
+        streamMode = !streamMode
+        console.log(`\n  流式输出: ${streamMode ? '开启' : '关闭'}\n`)
+        if (streamMode) {
+          console.log('  将实时展示 LLM 生成的文本内容\n')
         }
         break
 
