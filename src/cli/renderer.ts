@@ -18,11 +18,12 @@ const GRAY = '\x1b[90m'
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
 
-export function renderBanner(model: string): void {
+export function renderBanner(model: string, streamMode: boolean): void {
+  const outputMode = streamMode ? '流式输出' : '非流式输出'
   console.log('')
   console.log('═══════════════════════════════════════════')
   console.log('  NLC Demo v0.1 - 智能座舱语言控制系统')
-  console.log(`  模型: ${model} | 输入 /help 查看帮助`)
+  console.log(`  模型: ${model} | 输出: ${outputMode}`)
   console.log('═══════════════════════════════════════════')
   console.log('')
 }
