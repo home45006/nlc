@@ -206,12 +206,11 @@ export class ScriptCapabilityHandler {
     }
 
     // 输出脚本调用信息
-    console.log('')
-    console.log('─'.repeat(50))
+    console.log('\n' + '═'.repeat(50))
     console.log(`  📜 脚本调用: ${scriptConfig.name} (${scriptExtension.scriptId})`)
     console.log(`  📝 能力: ${capability}`)
     console.log(`  📥 参数: ${JSON.stringify(slots)}`)
-    console.log('─'.repeat(50))
+    console.log('═'.repeat(50))
 
     // 验证输入
     const validation = this.validateInput(slots, scriptExtension)
@@ -332,7 +331,7 @@ export class ScriptCapabilityHandler {
   ): Promise<SkillResult> {
     if (!result.success) {
       console.log(`  ❌ 脚本执行失败: ${result.error ?? result.stderr ?? '未知错误'}`)
-      console.log('─'.repeat(50))
+      console.log('═'.repeat(50))
       return {
         success: false,
         intent: capability,
@@ -366,18 +365,19 @@ export class ScriptCapabilityHandler {
 
     // 如果需要 LLM 润色
     if (extension.summarizeWithLlm && this.llmProvider) {
-      console.log('')
+      console.log('\n' + '─'.repeat(40))
       console.log(`  🔄 LLM 润色中...`)
       try {
-        ttsText = await this.llmSummarize(ttsText, capability)
+        const result = await this.llmSummarize(ttsText, capability)
         console.log(`  ✅ LLM 润色完成`)
+        ttsText = result
       } catch (error) {
         console.warn('[ScriptCapabilityHandler] LLM 润色失败，使用原始输出:', error)
       }
     }
 
     console.log(`  💬 播报文本: ${ttsText}`)
-    console.log('─'.repeat(50))
+    console.log('═'.repeat(50))
 
     return {
       success: true,
@@ -404,6 +404,10 @@ ${rawOutput}
 
 请将上述结果用简洁、自然的车载语音播报形式返回（50字以内）。直接返回播报内容，不需要引号或其他装饰。`
 
+    // 调试：打印 LLM 输入
+    console.log('\n  📥 LLM 输入:')
+    console.log(`  [user]: ${prompt.substring(0, 200)}${prompt.length > 200 ? '...' : ''}`)
+
     const startTime = Date.now()
 
     // 如果有流式回调，使用流式输出
@@ -412,7 +416,7 @@ ${rawOutput}
       const wrappedChunk = (chunk: string) => {
         if (firstChunk) {
           firstChunk = false
-          console.log(`  ⏱️  LLM润色首token耗时: ${Date.now() - startTime}ms`)
+          console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
         }
         this.streamChunk!(chunk)
       }
@@ -426,6 +430,9 @@ ${rawOutput}
         },
         wrappedChunk
       )
+      // 调试：打印 LLM 输出
+      console.log('\n  📤 LLM 输出:')
+      console.log(`  ${response.content?.substring(0, 200)}${response.content && response.content.length > 200 ? '...' : ''}`)
       return response.content ?? rawOutput
     }
 
@@ -438,7 +445,11 @@ ${rawOutput}
     })
 
     // 输出首token耗时
-    console.log(`  ⏱️  LLM润色首token耗时: ${Date.now() - startTime}ms`)
+    console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
+
+    // 调试：打印 LLM 输出
+    console.log('\n  📤 LLM 输出:')
+    console.log(`  ${response.content?.substring(0, 200)}${response.content && response.content.length > 200 ? '...' : ''}`)
 
     return response.content ?? rawOutput
   }

@@ -20,12 +20,12 @@ import {
   type VerboseResult,
 } from './renderer.js'
 
-type ModelName = 'gemini' | 'glm' | 'minimax'
+type ModelName = 'gemini' | 'glm' | 'minimax' | 'MiniMax-M2.5' | 'MiniMax-M2.5-highspeed' | 'MiniMax-M2.1'
 
 // 对话历史最大条数
 const MAX_HISTORY = 5
 
-function createProvider(model: ModelName): LLMProvider {
+function createProvider(model: ModelName, minimaxModel?: string): LLMProvider {
   if (model === 'gemini') {
     if (!config.geminiApiKey) {
       throw new Error('未配置 GEMINI_API_KEY，请在 .env 文件中设置')
@@ -40,11 +40,18 @@ function createProvider(model: ModelName): LLMProvider {
     return new ZhipuProvider(config.zhipuApiKey)
   }
 
-  if (model === 'minimax') {
+  if (model === 'minimax' || model.startsWith('MiniMax-')) {
     if (!config.minimaxApiKey) {
       throw new Error('未配置 MINIMAX_API_KEY，请在 .env 文件中设置')
     }
-    return new MiniMaxProvider(config.minimaxApiKey)
+    // MiniMax 模型映射（简短名 -> 完整名）
+    const modelMap: Record<string, string> = {
+      'MiniMax-M2.5': 'MiniMax-M2.5',
+      'MiniMax-M2.5-highspeed': 'MiniMax-M2.5-highspeed',
+      'MiniMax-M2.1': 'MiniMax-M2.1',
+    }
+    const actualModel = minimaxModel || modelMap[model] || config.minimaxModel
+    return new MiniMaxProvider(config.minimaxApiKey, actualModel)
   }
 
   throw new Error(`不支持的模型: ${model}`)
@@ -75,27 +82,52 @@ function renderSkills(skills: Skill[]): void {
   console.log('')
 }
 
-async function selectModel(rl: ReturnType<typeof createInterface>): Promise<ModelName> {
+async function selectModel(rl: ReturnType<typeof createInterface>): Promise<{ model: ModelName, minimaxModel: string }> {
   // 优先使用命令行参数指定模型
   const modelArg = process.argv.find(arg => arg.startsWith('--model='))
   if (modelArg) {
     const model = modelArg.split('=')[1] as ModelName
-    if (['gemini', 'glm', 'minimax'].includes(model)) {
+    if (['gemini', 'glm', 'minimax', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1'].includes(model)) {
       console.log(`  使用命令行指定的模型: ${model}\n`)
-      return model
+      if (model.startsWith('MiniMax-')) {
+        return { model: 'minimax' as ModelName, minimaxModel: model }
+      }
+      return { model, minimaxModel: config.minimaxModel }
     }
   }
 
   // 其次使用环境变量指定模型
   const envModel = process.env.NLC_MODEL as ModelName | undefined
-  if (envModel && ['gemini', 'glm', 'minimax'].includes(envModel)) {
+  if (envModel && ['gemini', 'glm', 'minimax', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1'].includes(envModel)) {
     console.log(`  使用环境变量指定的模型: ${envModel}\n`)
-    return envModel
+    if (envModel.startsWith('MiniMax-')) {
+      return { model: 'minimax' as ModelName, minimaxModel: envModel }
+    }
+    return { model: envModel, minimaxModel: config.minimaxModel }
   }
 
-  // 检查 readline 是否已关闭
-  if (rl.closed) {
-    return config.defaultModel as ModelName
+  // MiniMax 支持多个模型
+  const minimaxModels = [
+    { id: 'MiniMax-M2.5', name: 'M2.5' },
+    { id: 'MiniMax-M2.5-highspeed', name: 'M2.5-highspeed' },
+    { id: 'MiniMax-M2.1', name: 'M2.1' },
+  ]
+
+  // 构建菜单选项
+  const options: { key: string, name: string, model: string, isDefault: boolean }[] = []
+
+  if (config.geminiApiKey) {
+    options.push({ key: '1', name: 'Gemini 3 Flash', model: 'gemini', isDefault: config.defaultModel === 'gemini' })
+  }
+  if (config.zhipuApiKey) {
+    options.push({ key: '2', name: 'GLM-4-Flash (智谱)', model: 'glm', isDefault: config.defaultModel === 'glm' })
+  }
+  if (config.minimaxApiKey) {
+    minimaxModels.forEach(m => {
+      const key = String(options.length + 1)
+      const isDefault = config.defaultModel === 'minimax' && config.minimaxModel.includes(m.id.replace('minimax-', 'M'))
+      options.push({ key, name: `MiniMax ${m.name}`, model: m.id, isDefault })
+    })
   }
 
   // 显示模型选择菜单
@@ -103,18 +135,10 @@ async function selectModel(rl: ReturnType<typeof createInterface>): Promise<Mode
   console.log('┌─────────────────────────────────┐')
   console.log('│      请选择要使用的模型          │')
   console.log('├─────────────────────────────────┤')
-  if (config.geminiApiKey) {
-    const isDefault = config.defaultModel === 'gemini'
-    console.log(`│  1. Gemini 3 Flash${isDefault ? ' [默认]' : ''}            │`)
-  }
-  if (config.zhipuApiKey) {
-    const isDefault = config.defaultModel === 'glm'
-    console.log(`│  2. GLM-4-Flash (智谱)${isDefault ? ' [默认]' : ''}      │`)
-  }
-  if (config.minimaxApiKey) {
-    const isDefault = config.defaultModel === 'minimax'
-    console.log(`│  3. MiniMax M2.5${isDefault ? ' [默认]' : ''}               │`)
-  }
+  options.forEach(opt => {
+    const label = `${opt.key}. ${opt.name}${opt.isDefault ? ' [默认]' : ''}`
+    console.log(`│ ${label.padEnd(36)}│`)
+  })
   console.log('├─────────────────────────────────┤')
   console.log(`│  直接回车使用默认: ${config.defaultModel}`)
   console.log('└─────────────────────────────────┘')
@@ -122,23 +146,24 @@ async function selectModel(rl: ReturnType<typeof createInterface>): Promise<Mode
 
   // 使用 readline 等待输入
   return new Promise((resolve) => {
-    rl.question('选择 [1/2/3]: ', (input) => {
+    rl.question(`选择 [${options.map(o => o.key).join('/')}]: `, (input) => {
       const trimmed = input.trim()
 
       if (!trimmed) {
-        resolve(config.defaultModel as ModelName)
+        resolve({ model: 'minimax', minimaxModel: config.minimaxModel })
         return
       }
 
-      if (trimmed === '1' && config.geminiApiKey) {
-        resolve('gemini')
-      } else if (trimmed === '2' && config.zhipuApiKey) {
-        resolve('glm')
-      } else if (trimmed === '3' && config.minimaxApiKey) {
-        resolve('minimax')
+      const selected = options.find(o => o.key === trimmed)
+      if (selected) {
+        if (selected.model.startsWith('MiniMax-')) {
+          resolve({ model: 'minimax' as ModelName, minimaxModel: selected.model })
+        } else {
+          resolve({ model: selected.model as ModelName, minimaxModel: config.minimaxModel })
+        }
       } else {
         console.log(`\n  使用默认模型: ${config.defaultModel}\n`)
-        resolve(config.defaultModel as ModelName)
+        resolve({ model: config.defaultModel as ModelName, minimaxModel: config.minimaxModel })
       }
     })
   })
@@ -198,8 +223,8 @@ export async function startSkillRepl(): Promise<void> {
   })
 
   // 选择模型
-  const selectedModel = await selectModel(rl)
-  const provider = createProvider(selectedModel)
+  const { model: selectedModel, minimaxModel: selectedMiniMaxModel } = await selectModel(rl)
+  const provider = createProvider(selectedModel, selectedMiniMaxModel)
 
   // 创建 FileBasedSkillOrchestrator
   const orchestrator = createFileBasedSkillOrchestrator(provider, {
@@ -221,13 +246,13 @@ export async function startSkillRepl(): Promise<void> {
   let verboseMode = false
   let streamMode = true
 
-  renderBanner(provider.name)
+  renderBanner(provider.name, streamMode)
   console.log(`  已加载 ${skills.length} 个 Skills | 输入 /help 查看帮助`)
   console.log('')
 
   const prompt = (): void => {
     // 检查 readline 是否已关闭
-    if (rl.closed) {
+    if ((rl as any).closed) {
       return
     }
 

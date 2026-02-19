@@ -166,7 +166,7 @@ const newState = {
 | `GEMINI_API_KEY` | 是 | Google Gemini API Key | - |
 | `ZHIPU_API_KEY` | 否 | 智谱 GLM API Key | - |
 | `MINIMAX_API_KEY` | 否 | MiniMax API Key | - |
-| `MINIMAX_MODEL` | 否 | MiniMax 模型 | `MiniMax-M2.5` |
+| `MINIMAX_MODEL` | 否 | MiniMax 模型 (`M2.5`, `M2.5-highspeed`, `M2.1`, `M2.1-highspeed`) | `M2.5` |
 | `DEFAULT_MODEL` | 否 | 默认模型选择 (`gemini`/`glm`/`minimax`) | `gemini` |
 
 ## 运行模式

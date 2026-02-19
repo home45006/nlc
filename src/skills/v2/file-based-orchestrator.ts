@@ -279,38 +279,35 @@ export class FileBasedSkillOrchestrator {
       content: this.buildContextMessage(context.vehicleState),
     })
 
-    // 添加对话历史
+    // 添加对话历史，便于理解上下文
+    // 只保留 user 消息作为上下文，assistant 消息只取关键信息摘要
     if (context.dialogHistory.length > 0) {
-      const history = context.dialogHistory.slice(-this.options.maxHistoryLength)
-      messages.push(...history)
+      const history = context.dialogHistory.slice(-this.options.maxHistoryLength * 2)
+      for (const msg of history) {
+        if (msg.role === 'user') {
+          messages.push({ role: 'user', content: msg.content })
+        } else if (msg.role === 'assistant') {
+          // assistant 消息作为上下文摘要（简短版本），帮助理解追问场景
+          const summary = msg.content.split('。')[0] // 只取第一句作为摘要
+          messages.push({ role: 'user', content: `[上轮回复]: ${summary}` })
+        }
+      }
     }
 
     // 添加当前查询
     messages.push({ role: 'user', content: userQuery })
 
-    const startTime = Date.now()
-
-    // 如果有流式回调，使用流式输出
-    if (context.streamChunk) {
-      let firstChunk = true
-      const wrappedChunk = (chunk: string) => {
-        if (firstChunk) {
-          firstChunk = false
-          console.log(`  ⏱️  意图识别首token耗时: ${Date.now() - startTime}ms`)
-        }
-        context.streamChunk!(chunk)
-      }
-      const response = await this.provider.streamChat(
-        {
-          messages,
-          temperature: 0.1,
-          maxTokens: 2000,
-        },
-        wrappedChunk
-      )
-      return this.parseIntentResponse(response.content || '')
+    // 调试：打印 LLM 输入
+    console.log('\n' + '═'.repeat(50))
+    console.log('  📥 意图识别')
+    console.log('═'.repeat(50))
+    for (const msg of messages) {
+      console.log(`  [${msg.role}]: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`)
     }
 
+    const startTime = Date.now()
+
+    // 意图识别始终使用非流式请求（用户不需要看到 JSON 逐字输出）
     const response = await this.provider.chat({
       messages,
       temperature: 0.1,
@@ -318,7 +315,11 @@ export class FileBasedSkillOrchestrator {
     })
 
     // 输出首token耗时
-    console.log(`  ⏱️  意图识别首token耗时: ${Date.now() - startTime}ms`)
+    console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
+
+    // 调试：打印 LLM 输出
+    console.log('\n  📤 LLM 输出:')
+    console.log(`  ${response.content?.substring(0, 500)}${response.content && response.content.length > 500 ? '...' : ''}`)
 
     return this.parseIntentResponse(response.content || '')
   }
@@ -537,7 +538,7 @@ ${capabilityDescriptions}
 
 ## 输出格式
 
-返回 JSON 格式（包含在 \`\`\`json 代码块中）：
+⚠️ 必须返回 JSON 格式（包含在 \`\`\`json 代码块中），不要返回任何其他内容：
 
 \`\`\`json
 {
@@ -555,11 +556,20 @@ ${capabilityDescriptions}
 
 ## 重要规则
 
-1. **多意图**：用户的请求可能包含多个意图，每个意图返回一个对象
-2. **槽位提取**：根据用户输入提取相应的参数
-3. **置信度**：0.9+ 非常确定，0.7-0.9 比较确定，0.5-0.7 有些不确定
-4. **无法识别时**：返回空 intents 数组，系统会使用 Chat 处理
-5. **严格匹配**：只匹配上述列出的能力，不要随意创建新的能力名称`
+1. **必须输出 JSON**：即使用户的问题看起来像闲聊，也要尝试匹配可用能力
+2. **追问也是意图**：当用户说"珠海呢"、"明天呢"、"换一个"、"继续"等，是对前文的追问
+   - 关键：根据对话历史中的上下文（之前的用户问题和助手回复）来推断当前意图
+   - 示例：
+     - 历史："北京今天天气怎么样" + "北京晴，26°C"
+     - 当前："珠海呢" -> 应识别为 weather_query，slots: {city: "珠海", date: "今天"}
+     - 历史："播放周杰伦的歌"
+     - 当前："换成陈奕迅" -> 应识别为 music 的搜索播放能力
+3. **多意图**：用户的请求可能包含多个意图，每个意图返回一个对象
+4. **槽位提取**：根据用户输入提取相应的参数，结合上下文（如之前提到的城市、时间、歌曲名等）
+5. **置信度**：0.9+ 非常确定，0.7-0.9 比较确定，0.5-0.7 有些不确定
+6. **无法识别时**：返回空 intents 数组，系统会使用 Chat 处理
+7. **严格匹配**：只匹配上述列出的能力，不要随意创建新的能力名称
+8. **绝对禁止直接回答**：永远不要在输出中直接给出答案，只返回 JSON 格式的意图识别结果`
   }
 
   /**

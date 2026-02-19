@@ -4,6 +4,7 @@ interface Config {
   readonly zhipuApiKey: string
   readonly geminiApiKey: string
   readonly minimaxApiKey: string
+  readonly minimaxModel: string
   readonly defaultModel: 'gemini' | 'glm' | 'minimax'
 }
 
@@ -11,6 +12,7 @@ function loadConfig(): Config {
   const zhipuApiKey = process.env.ZHIPU_API_KEY ?? ''
   const geminiApiKey = process.env.GEMINI_API_KEY ?? ''
   const minimaxApiKey = process.env.MINIMAX_API_KEY ?? ''
+  const minimaxModel = process.env.MINIMAX_MODEL ?? 'MiniMax-M2.5'
   const defaultModel = (process.env.DEFAULT_MODEL ?? 'glm') as 'gemini' | 'glm' | 'minimax'
 
   // 启动时校验：至少需要一个 API Key
@@ -31,6 +33,7 @@ function loadConfig(): Config {
     zhipuApiKey,
     geminiApiKey,
     minimaxApiKey,
+    minimaxModel,
     defaultModel,
   }
 }

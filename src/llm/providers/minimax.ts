@@ -110,10 +110,15 @@ export class MiniMaxProvider implements LLMProvider {
       }
 
       const data = (await response.json()) as MiniMaxResponse
+
       const choice = data.choices[0]
 
       if (!choice) {
         throw new Error('MiniMax API returned empty choices')
+      }
+
+      if (!choice.message.content) {
+        console.log('  [MiniMax] warning: content is empty')
       }
 
       const toolCalls: ReadonlyArray<ToolCall> =
@@ -126,8 +131,11 @@ export class MiniMaxProvider implements LLMProvider {
           },
         })) ?? []
 
+      // MiniMax M2.1 等模型可能返回 reasoning_content 而不是 content
+      const content = choice.message.content || choice.message.reasoning_content || ''
+
       return {
-        content: choice.message.content,
+        content,
         toolCalls,
         usage: {
           promptTokens: data.usage.prompt_tokens,
@@ -229,9 +237,10 @@ export class MiniMaxProvider implements LLMProvider {
 
               try {
                 const data = JSON.parse(dataStr) as MiniMaxStreamChoice
-
-                // MiniMax 流式响应格式：choices[].delta.content
                 const delta = data.choices?.[0]?.delta
+
+                // MiniMax 流式响应：先返回 reasoning_content，最后返回 content
+                // 只收集 content，忽略 reasoning_content
                 const content = delta?.content || ''
 
                 if (content) {
