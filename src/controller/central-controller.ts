@@ -21,6 +21,7 @@ import type {
 } from '../core/types.js'
 import type { LLMProvider, ChatRequest, ChatMessage } from '../types/llm.js'
 import { Domain } from '../types/domain.js'
+import { logger } from '../utils/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,6 +40,7 @@ export interface CentralControllerConfig {
 export class CentralControllerImpl implements CentralController {
   private readonly provider: LLMProvider
   private readonly systemPrompt: string
+  private readonly log = logger.module('CentralController')
 
   constructor(provider: LLMProvider)
   constructor(config: CentralControllerConfig)
@@ -71,7 +73,7 @@ export class CentralControllerImpl implements CentralController {
       const response = await this.provider.chat(request)
       return this.parseResponse(response.content, userInput)
     } catch (error) {
-      console.error('[CentralController] Routing failed:', error)
+      this.log.error('Routing failed:', error)
       // 失败时返回 chat 域作为兜底
       return this.createFallbackRouting(userInput)
     }
@@ -175,7 +177,7 @@ export class CentralControllerImpl implements CentralController {
         return this.validateRouting(parsed, originalInput)
       }
     } catch (error) {
-      console.error('[CentralController] Failed to parse response:', error)
+      this.log.error('Failed to parse response:', error)
     }
 
     return this.createFallbackRouting(originalInput)
@@ -270,7 +272,7 @@ export class CentralControllerImpl implements CentralController {
     try {
       return fs.readFileSync(promptPath, 'utf-8')
     } catch {
-      console.warn('[CentralController] Failed to load prompt file, using default')
+      this.log.warn('Failed to load prompt file, using default')
       return this.getDefaultPrompt()
     }
   }

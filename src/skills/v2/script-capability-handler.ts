@@ -13,6 +13,7 @@ import { ScriptExecutor, createScriptExecutor } from './script-executor.js'
 import { ScriptConfigLoader, createScriptConfigLoader } from './script-config-loader.js'
 import { SandboxManager, createSandboxManager } from './sandbox-manager.js'
 import { InputValidator } from './input-validator.js'
+import { logger } from '../../utils/logger.js'
 
 /**
  * 处理器配置
@@ -57,6 +58,7 @@ export class ScriptCapabilityHandler {
   private readonly llmProvider?: LLMProvider
   /** 流式输出回调 */
   private streamChunk?: StreamChunkHandler
+  private readonly log = logger.module('ScriptCapabilityHandler')
 
   constructor(config: ScriptHandlerConfig) {
     this.fallbackExecutor = createScriptExecutor(config.skillsRootDir)
@@ -87,7 +89,7 @@ export class ScriptCapabilityHandler {
     const result = await this.fallbackConfigLoader.load()
 
     if (!result.success) {
-      console.warn('[ScriptCapabilityHandler] 脚本配置加载有错误:', result.errors)
+      this.log.warn(`脚本配置加载有错误: ${result.errors.join(', ')}`)
     }
 
     // 注册配置到 fallback 执行器
@@ -98,7 +100,7 @@ export class ScriptCapabilityHandler {
     // 仅输出非"文件不存在"的警告（fallback 无配置文件是正常情况）
     const significantWarnings = result.warnings.filter(w => !w.includes('脚本配置文件不存在'))
     if (significantWarnings.length > 0) {
-      console.warn('[ScriptCapabilityHandler] 警告:', significantWarnings)
+      this.log.warn(`警告: ${significantWarnings.join(', ')}`)
     }
 
     this.fallbackInitialized = true
@@ -117,7 +119,7 @@ export class ScriptCapabilityHandler {
       const result = await loader.load()
 
       if (!result.success) {
-        console.warn(`[ScriptCapabilityHandler] skill ${skillId} 脚本配置加载有错误:`, result.errors)
+        this.log.warn(`skill ${skillId} 脚本配置加载有错误: ${result.errors.join(', ')}`)
       }
 
       // 为该 skill 创建独立的执行器（以脚本目录为基准）
@@ -129,7 +131,7 @@ export class ScriptCapabilityHandler {
       }
 
       if (result.warnings.length > 0) {
-        console.warn(`[ScriptCapabilityHandler] skill ${skillId} 警告:`, result.warnings)
+        this.log.warn(`skill ${skillId} 警告: ${result.warnings.join(', ')}`)
       }
 
       this.configLoaders.set(skillId, loader)
@@ -205,12 +207,13 @@ export class ScriptCapabilityHandler {
       }
     }
 
-    // 输出脚本调用信息
+    // 脚本执行阶段
     console.log('\n' + '═'.repeat(50))
-    console.log(`  📜 脚本调用: ${scriptConfig.name} (${scriptExtension.scriptId})`)
+    console.log(`  ⚙️  [阶段2] 脚本执行`)
+    console.log('═'.repeat(50))
+    console.log(`  📜 脚本: ${scriptConfig.name} (${scriptExtension.scriptId})`)
     console.log(`  📝 能力: ${capability}`)
     console.log(`  📥 参数: ${JSON.stringify(slots)}`)
-    console.log('═'.repeat(50))
 
     // 验证输入
     const validation = this.validateInput(slots, scriptExtension)
@@ -368,11 +371,9 @@ export class ScriptCapabilityHandler {
       try {
         ttsText = await this.llmSummarize(ttsText, capability)
       } catch (error) {
-        console.warn('[ScriptCapabilityHandler] LLM 润色失败，使用原始输出:', error)
+        this.log.warn(`LLM 润色失败，使用原始输出:`, error)
       }
     }
-
-    console.log('═'.repeat(50))
 
     return {
       success: true,
@@ -392,51 +393,54 @@ export class ScriptCapabilityHandler {
       return rawOutput
     }
 
+    const trimmedOutput = rawOutput.trim()
+    if (!trimmedOutput) {
+      return rawOutput
+    }
+
     const prompt = `你是一个车载语音助手，需要将脚本执行结果用自然、友好的方式表达出来。
 
 脚本执行结果：
-${rawOutput}
+${trimmedOutput}
 
 请将上述结果用简洁、自然的车载语音播报形式返回（50字以内）。直接返回播报内容，不需要引号或其他装饰。`
 
-    // 调试：打印 LLM 输入
-    console.log('\n  📥 LLM 输入:')
-    console.log(`  [user]: ${prompt.substring(0, 200)}${prompt.length > 200 ? '...' : ''}`)
-
-    const startTime = Date.now()
+    // 结果润色阶段（LLM 调用）
+    console.log('\n  📥 [阶段3] 结果润色')
+    console.log(`  模型: ${this.llmProvider.name}`)
 
     // 如果有流式回调，使用流式输出
     if (this.streamChunk) {
+      const startTime = Date.now()
       let firstChunk = true
+      let accumulatedContent = ''
       const wrappedChunk = (chunk: string) => {
         if (firstChunk) {
           firstChunk = false
           console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
         }
+        accumulatedContent += chunk
         this.streamChunk!(chunk)
       }
       const response = await this.llmProvider.streamChat(
         {
-          messages: [
-            { role: 'user', content: prompt }
-          ],
+          messages: [{ role: 'user', content: prompt }],
           temperature: 0.7,
           maxTokens: 256,
         },
         wrappedChunk
       )
-      return response.content ?? rawOutput
+      const llmResult = accumulatedContent || response.content
+      return llmResult?.trim() || rawOutput
     }
 
     const response = await this.llmProvider.chat({
-      messages: [
-        { role: 'user', content: prompt }
-      ],
+      messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       maxTokens: 256,
     })
 
-    return response.content ?? rawOutput
+    return response.content?.trim() || rawOutput
   }
 
   /**

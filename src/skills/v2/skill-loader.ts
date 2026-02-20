@@ -10,6 +10,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import type { Skill, SkillCapability, SkillInput, SkillContext, SkillResult } from '../types.js'
+import { logger } from '../../utils/logger.js'
 import {
   type SkillMetadataYaml,
   type SkillInstructions,
@@ -155,6 +156,7 @@ export class SkillLoader {
   private readonly options: Required<SkillLoaderOptions>
   private readonly metadataCache: Map<string, SkillMetadataYaml> = new Map()
   private readonly instructionsCache: Map<string, SkillInstructions> = new Map()
+  private readonly log = logger.module('SkillLoader')
 
   constructor(skillsDir: string, options?: SkillLoaderOptions) {
     this.skillsDir = skillsDir
@@ -212,7 +214,7 @@ export class SkillLoader {
 
       // 验证必需字段
       if (!isSkillMetadataYaml(parsed)) {
-        console.warn(`[SkillLoader] Invalid skill.yaml for ${skillId}: missing required fields`)
+        this.log.warn(`Invalid skill.yaml for ${skillId}: missing required fields`)
         return null
       }
 
@@ -227,7 +229,7 @@ export class SkillLoader {
 
       return metadata
     } catch (error) {
-      console.warn(`[SkillLoader] Failed to load skill.yaml for ${skillId}:`, error)
+      this.log.warn(`Failed to load skill.yaml for ${skillId}:`, error)
       return null
     }
   }
@@ -277,7 +279,7 @@ export class SkillLoader {
           }
         }
       } catch (error) {
-        console.warn(`[SkillLoader] Failed to load examples from ${filePath}:`, error)
+        this.log.warn(`Failed to load examples from ${filePath}:`, error)
       }
     }
 
@@ -316,7 +318,7 @@ export class SkillLoader {
 
       return instructions
     } catch (error) {
-      console.warn(`[SkillLoader] Failed to load SKILL.md for ${skillId}:`, error)
+      this.log.warn(`Failed to load SKILL.md for ${skillId}:`, error)
       return null
     }
   }

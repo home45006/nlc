@@ -51,16 +51,11 @@ export function renderResult(
     return
   }
 
-  // 单意图时显示原有格式
-  console.log('')
-  console.log(DIVIDER)
-  console.log(`  Domain: ${output.domain}`)
-  console.log(`  Intent: ${output.intent}`)
-  console.log(`  Slots:  ${JSON.stringify(output.slots)}`)
-  console.log(DIVIDER_END)
-  console.log('')
-
+  // 阶段4：小智回复阶段
   if (output.ttsText) {
+    console.log('\n' + '─'.repeat(50))
+    console.log('  💬 [阶段4] 小智回复')
+    console.log('─'.repeat(50))
     console.log(`小智> ${output.ttsText}`)
   }
 
@@ -119,6 +114,7 @@ export function renderHelp(): void {
   console.log('    /skills   查看已加载 Skills (仅 skill 模式)')
   console.log('    /verbose  显示详细业务执行流程 (别名: /v)')
   console.log('    /stream   开关流式输出 (别名: /s)')
+  console.log('    /loglevel 设置日志级别 (如: /loglevel debug)')
   console.log('    /debug    开关调试模式')
   console.log('    /quit     退出')
   console.log('────────────────────────')

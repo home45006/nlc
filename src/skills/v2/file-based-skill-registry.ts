@@ -17,6 +17,7 @@ import type { DomainType } from '../../types/domain.js'
 import type { Skill } from '../types.js'
 import { SkillLoader, FileBasedSkill } from './skill-loader.js'
 import type { SkillMetadataYaml, SkillInstructions } from './types.js'
+import { logger } from '../../utils/logger.js'
 
 /**
  * FileBasedSkillRegistry 配置选项
@@ -37,6 +38,7 @@ export class FileBasedSkillRegistry {
   private readonly loader: SkillLoader
   private readonly skills: Map<string, FileBasedSkill> = new Map()
   private readonly domainIndex: Map<DomainType, FileBasedSkill[]> = new Map()
+  private readonly log = logger.module('FileBasedSkillRegistry')
 
   constructor(options?: FileBasedSkillRegistryOptions) {
     // 默认使用项目根目录下的 skills 目录
@@ -66,7 +68,7 @@ export class FileBasedSkillRegistry {
       this.registerSkill(skill)
     }
 
-    console.log(`[FileBasedSkillRegistry] Loaded ${skills.length} skills from ${directory}`)
+    this.log.info(`Loaded ${skills.length} skills from ${directory}`)
   }
 
   /**
@@ -74,7 +76,7 @@ export class FileBasedSkillRegistry {
    */
   private registerSkill(skill: FileBasedSkill): void {
     if (this.skills.has(skill.id)) {
-      console.warn(`[FileBasedSkillRegistry] Overwriting existing skill: ${skill.id}`)
+      this.log.warn(`Overwriting existing skill: ${skill.id}`)
     }
 
     this.skills.set(skill.id, skill)
@@ -86,7 +88,7 @@ export class FileBasedSkillRegistry {
     }
     this.domainIndex.get(domain)!.push(skill)
 
-    console.log(`[FileBasedSkillRegistry] Registered skill: ${skill.id} (domain: ${skill.domain})`)
+    this.log.info(`Registered skill: ${skill.id} (domain: ${skill.domain})`)
   }
 
   /**

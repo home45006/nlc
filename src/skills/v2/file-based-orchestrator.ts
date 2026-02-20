@@ -27,6 +27,7 @@ import type { ScriptCapabilityExtension } from './types.js'
 import { FileBasedSkillRegistry } from './file-based-skill-registry.js'
 import { SkillExecutor, type CapabilityHandler } from './skill-executor.js'
 import type { SkillScriptDir } from './script-capability-handler.js'
+import { logger } from '../../utils/logger.js'
 import { resolve } from 'node:path'
 
 /**
@@ -61,6 +62,8 @@ export interface OrchestratorContext {
   currentQuery?: string
   /** 流式输出回调 */
   streamChunk?: StreamChunkHandler
+  /** 是否 verbose 模式（打印完整输入） */
+  verbose?: boolean
 }
 
 /**
@@ -91,6 +94,7 @@ export class FileBasedSkillOrchestrator {
   private readonly options: Required<FileBasedOrchestratorOptions>
   private skills: Skill[] = []
   private initialized = false
+  private readonly log = logger.module('FileBasedSkillOrchestrator')
 
   constructor(provider: LLMProvider, options?: FileBasedOrchestratorOptions) {
     this.provider = provider
@@ -131,7 +135,7 @@ export class FileBasedSkillOrchestrator {
     this.initialized = true
 
     if (this.options.enableLogging) {
-      console.log(`[FileBasedSkillOrchestrator] Initialized with ${this.skills.length} skills`)
+      this.log.info(`Initialized with ${this.skills.length} skills`)
     }
   }
 
@@ -304,12 +308,15 @@ export class FileBasedSkillOrchestrator {
     // 添加当前查询
     messages.push({ role: 'user', content: userQuery })
 
-    // 调试：打印 LLM 输入
+    // 意图识别阶段（LLM 调用）
     console.log('\n' + '═'.repeat(50))
-    console.log('  📥 意图识别')
+    console.log('  🔍 [阶段1] Skill 选择及意图理解')
     console.log('═'.repeat(50))
-    for (const msg of messages) {
-      console.log(`  [${msg.role}]: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`)
+    // 只在 verbose 模式或 enableLogging 时打印完整输入
+    if (context.verbose || this.options.enableLogging) {
+      for (const msg of messages) {
+        this.log.debug(`[${msg.role}]: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`)
+      }
     }
 
     const startTime = Date.now()
@@ -321,7 +328,7 @@ export class FileBasedSkillOrchestrator {
     const handleChunk = (chunk: string) => {
       if (firstChunk) {
         firstChunk = false
-        console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
+        this.log.debug(`首token耗时: ${Date.now() - startTime}ms`)
       }
       fullContent += chunk
       // 如果有外部流式回调，也一并传递
@@ -462,7 +469,7 @@ export class FileBasedSkillOrchestrator {
         const wrappedChunk = (chunk: string) => {
           if (firstChunk) {
             firstChunk = false
-            console.log(`  ⏱️  Chat 首token耗时: ${Date.now() - startTime}ms`)
+            this.log.debug(`Chat 首token耗时: ${Date.now() - startTime}ms`)
           }
           context.streamChunk!(chunk)
         }

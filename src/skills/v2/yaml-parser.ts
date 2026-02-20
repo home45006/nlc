@@ -11,6 +11,8 @@
  * - 嵌套对象
  */
 
+import { logger } from '../../utils/logger.js'
+
 /**
  * 解析 YAML 值
  */
@@ -98,7 +100,7 @@ export function parseSimpleYaml(content: string): Record<string, unknown> {
       // 检查当前容器是否为数组
       if (!Array.isArray(top.container)) {
         // 如果不是数组，说明栈出了问题，跳过
-        console.warn(`[YAML] Expected array but got object at line: ${trimmed}`)
+        logger.warn(`Expected array but got object at line: ${trimmed}`)
         continue
       }
 

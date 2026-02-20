@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import type { ChatRequest, ChatResponse, LLMProvider, StreamChunkHandler, ToolCall } from '../../types/index.js'
+import { logger } from '../../utils/logger.js'
 
 const MINIMAX_API_URL = 'https://api.minimax.chat/v1/text/chatcompletion_v2'
 const DEFAULT_TIMEOUT_MS = 30000
@@ -118,7 +119,7 @@ export class MiniMaxProvider implements LLMProvider {
       }
 
       if (!choice.message.content) {
-        console.log('  [MiniMax] warning: content is empty')
+        logger.warn('[MiniMax] content is empty')
       }
 
       const toolCalls: ReadonlyArray<ToolCall> =

@@ -13,6 +13,7 @@ import {
   FileBasedSkillOrchestrator,
   createFileBasedSkillOrchestrator,
 } from '../skills/index.js'
+import { logger } from '../utils/logger.js'
 
 // 对话历史最大条数
 const MAX_HISTORY_MESSAGES = 5
@@ -46,6 +47,7 @@ export class NewDialogManager {
   private history: ChatMessage[] = []
   private lastLatencyMs = 0
   private initialized = false
+  private readonly log = logger.module('NewDialogManager')
 
   constructor(provider: LLMProvider) {
     this.stateManager = new VehicleStateManager()
@@ -56,7 +58,7 @@ export class NewDialogManager {
       maxHistoryLength: MAX_HISTORY_MESSAGES,
     })
 
-    console.log('[NewDialogManager] Created with FileBasedSkillOrchestrator')
+    this.log.info('Created with FileBasedSkillOrchestrator')
   }
 
   /**
@@ -70,7 +72,7 @@ export class NewDialogManager {
     await this.orchestrator.initialize()
     const skills = this.orchestrator.getSkills()
 
-    console.log('[NewDialogManager] Initialized with skills:', skills.map(s => s.id).join(', '))
+    this.log.info(`Initialized with skills: ${skills.map(s => s.id).join(', ')}`)
     this.initialized = true
   }
 
