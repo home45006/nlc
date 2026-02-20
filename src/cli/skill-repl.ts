@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline'
 import { config } from '../config.js'
+import { logger, type LogLevel } from '../utils/logger.js'
 import { GeminiProvider } from '../llm/providers/gemini.js'
 import { ZhipuProvider } from '../llm/providers/zhipu.js'
 import { MiniMaxProvider } from '../llm/providers/minimax.js'
@@ -294,15 +295,12 @@ export async function startSkillRepl(): Promise<void> {
           vehicleState,
           dialogHistory: [...dialogHistory],
           streamChunk: streamChunkHandler,
+          verbose: verboseMode,
         })
 
         // 如果启用流式模式，换行并显示首token耗时
         if (streamMode) {
           console.log('')
-          if (firstTokenTime > 0) {
-            const firstTokenLatency = firstTokenTime - totalStartTime
-            console.log(`  ⏱️  首 token 耗时: ${firstTokenLatency}ms`)
-          }
         }
 
         const totalEndTime = Date.now()
@@ -429,16 +427,37 @@ export async function startSkillRepl(): Promise<void> {
       case '/stream':
       case '/s':
         streamMode = !streamMode
-        console.log(`\n  流式输出: ${streamMode ? '开启' : '关闭'}\n`)
-        if (streamMode) {
-          console.log('  将实时展示 LLM 生成的文本内容\n')
-        }
+        console.log(`\n  流式输出: ${streamMode ? '开启' : '关闭'}`)
+        console.log(`  - 意图识别阶段: ${streamMode ? '流式' : '非流式'}`)
+        console.log(`  - 脚本润色阶段: ${streamMode ? '流式' : '非流式'}\n`)
         break
 
       case '/reset':
         stateManager.reset()
         dialogHistory.length = 0
         console.log('\n  车辆状态和对话历史已重置。\n')
+        break
+
+      case '/loglevel':
+      case '/log':
+        {
+          const args = input.split(/\s+/).slice(1)
+          if (args.length === 0) {
+            const currentLevel = logger.getLevel()
+            console.log(`\n  当前日志级别: ${currentLevel}`)
+            console.log('  可用级别: debug | info | warn | error\n')
+          } else {
+            const newLevel = args[0].toLowerCase() as LogLevel
+            const validLevels: LogLevel[] = ['debug', 'info', 'warn', 'error']
+            if (validLevels.includes(newLevel)) {
+              logger.setLevel(newLevel)
+              console.log(`\n  日志级别已设置为: ${newLevel}\n`)
+            } else {
+              console.log(`\n  无效的日志级别: ${args[0]}`)
+              console.log('  可用级别: debug | info | warn | error\n')
+            }
+          }
+        }
         break
 
       case '/clear':
