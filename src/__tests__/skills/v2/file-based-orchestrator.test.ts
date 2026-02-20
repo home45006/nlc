@@ -23,6 +23,7 @@ const TEST_SKILLS_DIR = path.join(process.cwd(), 'test-skills-orch-temp')
 // Mock LLM Provider
 const mockLLMProvider: LLMProvider = {
   chat: vi.fn(),
+  streamChat: vi.fn(),
 }
 
 // Mock 车辆状态
@@ -195,20 +196,27 @@ capabilities:
 
       await orchestrator.initialize()
 
-      // Mock LLM 返回意图识别结果
-      vi.mocked(mockLLMProvider.chat).mockResolvedValueOnce({
-        content: JSON.stringify({
-          reasoning: '用户想打开空调',
-          intents: [
-            {
-              skillId: 'vehicle_control',
-              capability: 'ac_control',
-              slots: { action: 'turn_on' },
-              confidence: 0.95,
-            },
-          ],
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      // Mock LLM 返回意图识别结果（流式输出，需要调用 onChunk 回调）
+      const intentResult = JSON.stringify({
+        reasoning: '用户想打开空调',
+        intents: [
+          {
+            skillId: 'vehicle_control',
+            capability: 'ac_control',
+            slots: { action: 'turn_on' },
+            confidence: 0.95,
+          },
+        ],
+      })
+      vi.mocked(mockLLMProvider.streamChat).mockImplementationOnce(async (_request, onChunk) => {
+        // 模拟流式输出：逐字符输出
+        for (const char of intentResult) {
+          await onChunk(char)
+        }
+        return {
+          content: intentResult,
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }
       })
 
       const result = await orchestrator.process('打开空调', {
@@ -244,16 +252,22 @@ capabilities:
 
       await orchestrator.initialize()
 
-      // Mock LLM 返回空意图（第一次调用：意图识别）
-      vi.mocked(mockLLMProvider.chat).mockResolvedValueOnce({
-        content: JSON.stringify({
-          reasoning: '无法识别特定意图',
-          intents: [],
-        }),
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      // Mock LLM 返回空意图（第一次调用：意图识别 - 流式输出）
+      const emptyIntentResult = JSON.stringify({
+        reasoning: '无法识别特定意图',
+        intents: [],
+      })
+      vi.mocked(mockLLMProvider.streamChat).mockImplementationOnce(async (_request, onChunk) => {
+        for (const char of emptyIntentResult) {
+          await onChunk(char)
+        }
+        return {
+          content: emptyIntentResult,
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        }
       })
 
-      // Mock LLM 返回兜底回复（第二次调用：生成回复）
+      // Mock LLM 返回兜底回复（第二次调用：生成回复 - 非流式）
       vi.mocked(mockLLMProvider.chat).mockResolvedValueOnce({
         content: '我暂时无法理解您的请求，请换个方式说说看。',
         usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },

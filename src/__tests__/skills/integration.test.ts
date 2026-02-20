@@ -31,6 +31,27 @@ const mockProvider: LLMProvider = {
     }),
     usage: { inputTokens: 0, outputTokens: 0 },
   }),
+  streamChat: async (request, onChunk) => {
+    const content = JSON.stringify({
+      reasoning: 'Test intent recognition',
+      intents: [
+        {
+          skillId: 'vehicle_control',
+          capability: 'ac_control',
+          slots: { action: 'turn_on' },
+          confidence: 0.95,
+        },
+      ],
+    })
+    // 模拟流式输出
+    for (const char of content) {
+      await onChunk(char)
+    }
+    return {
+      content,
+      usage: { inputTokens: 0, outputTokens: 0 },
+    }
+  },
   chatWithTools: async () => ({
     content: '{}',
     toolCalls: [],

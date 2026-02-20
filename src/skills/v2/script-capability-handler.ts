@@ -365,18 +365,13 @@ export class ScriptCapabilityHandler {
 
     // 如果需要 LLM 润色
     if (extension.summarizeWithLlm && this.llmProvider) {
-      console.log('\n' + '─'.repeat(40))
-      console.log(`  🔄 LLM 润色中...`)
       try {
-        const result = await this.llmSummarize(ttsText, capability)
-        console.log(`  ✅ LLM 润色完成`)
-        ttsText = result
+        ttsText = await this.llmSummarize(ttsText, capability)
       } catch (error) {
         console.warn('[ScriptCapabilityHandler] LLM 润色失败，使用原始输出:', error)
       }
     }
 
-    console.log(`  💬 播报文本: ${ttsText}`)
     console.log('═'.repeat(50))
 
     return {
@@ -430,9 +425,6 @@ ${rawOutput}
         },
         wrappedChunk
       )
-      // 调试：打印 LLM 输出
-      console.log('\n  📤 LLM 输出:')
-      console.log(`  ${response.content?.substring(0, 200)}${response.content && response.content.length > 200 ? '...' : ''}`)
       return response.content ?? rawOutput
     }
 
@@ -443,13 +435,6 @@ ${rawOutput}
       temperature: 0.7,
       maxTokens: 256,
     })
-
-    // 输出首token耗时
-    console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
-
-    // 调试：打印 LLM 输出
-    console.log('\n  📤 LLM 输出:')
-    console.log(`  ${response.content?.substring(0, 200)}${response.content && response.content.length > 200 ? '...' : ''}`)
 
     return response.content ?? rawOutput
   }

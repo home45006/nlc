@@ -12,6 +12,19 @@ function createMockProvider(response: Partial<ChatResponse> = {}): LLMProvider {
       usage: { promptTokens: 100, completionTokens: 20 },
       ...response,
     }),
+    streamChat: vi.fn().mockImplementation(async (request, onChunk) => {
+      const content = '好的，已为您打开空调。'
+      // 模拟流式输出
+      for (const char of content) {
+        await onChunk(char)
+      }
+      return {
+        content,
+        toolCalls: [],
+        usage: { promptTokens: 100, completionTokens: 20 },
+        ...response,
+      }
+    }),
   }
 }
 

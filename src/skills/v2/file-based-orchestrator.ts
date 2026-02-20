@@ -236,6 +236,13 @@ export class FileBasedSkillOrchestrator {
       // 限制意图数量
       const intents = recognitionResult.intents.slice(0, this.options.maxIntents)
 
+      // 处理默认值：city 为空时设置为北京
+      for (const intent of intents) {
+        if (intent.capability === 'weather_query' && (!intent.slots.city || intent.slots.city === '')) {
+          intent.slots.city = '北京'
+        }
+      }
+
       // 2. 并行执行 Skills
       const skillResults = await this.executeIntents(intents, context, userQuery)
 
@@ -307,21 +314,34 @@ export class FileBasedSkillOrchestrator {
 
     const startTime = Date.now()
 
-    // 意图识别始终使用非流式请求（用户不需要看到 JSON 逐字输出）
-    const response = await this.provider.chat({
-      messages,
-      temperature: 0.1,
-      maxTokens: 2000,
-    })
+    // 使用流式输出进行意图识别
+    let fullContent = ''
+    let firstChunk = true
 
-    // 输出首token耗时
-    console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
+    const handleChunk = (chunk: string) => {
+      if (firstChunk) {
+        firstChunk = false
+        console.log(`  ⏱️  首token耗时: ${Date.now() - startTime}ms`)
+      }
+      fullContent += chunk
+      // 如果有外部流式回调，也一并传递
+      if (context.streamChunk) {
+        context.streamChunk(chunk)
+      }
+    }
 
-    // 调试：打印 LLM 输出
-    console.log('\n  📤 LLM 输出:')
-    console.log(`  ${response.content?.substring(0, 500)}${response.content && response.content.length > 500 ? '...' : ''}`)
+    await this.provider.streamChat(
+      {
+        messages,
+        temperature: 0.1,
+        maxTokens: 2000,
+      },
+      handleChunk
+    )
 
-    return this.parseIntentResponse(response.content || '')
+    // 流式输出已在外部打印，这里不再重复打印
+
+    return this.parseIntentResponse(fullContent)
   }
 
   /**
